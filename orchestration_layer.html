@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Orchestration Layer — RDR Cloud</title>
+  <style>
+    body { font-family: Arial, sans-serif; max-width: 900px; margin: 40px auto; padding: 0 20px; background: #fff; color: #333; }
+    h1 { font-size: 24px; margin-bottom: 4px; }
+    h2 { font-size: 18px; margin-top: 36px; border-bottom: 1px solid #ddd; padding-bottom: 6px; }
+    p  { line-height: 1.7; }
+    table { border-collapse: collapse; width: 100%; margin-top: 12px; }
+    th, td { border: 1px solid #ccc; padding: 8px 12px; text-align: left; font-size: 14px; }
+    th { background: #f0f4f8; font-weight: 600; }
+    tr:nth-child(even) { background: #f9f9f9; }
+    .diagram { margin: 24px 0; border: 1px solid #e0e0e0; border-radius: 10px; padding: 24px; background: #fafafa; }
+    ul { line-height: 2; }
+  </style>
+</head>
+<body>
+
+  <h1>Orchestration Layer — RDR Cloud</h1>
+  <p>The orchestration layer is managed by <strong>AWS Step Functions</strong>. It handles job routing, async triggering of ECS and Databricks workloads, monitoring, and state updates via DynamoDB.</p>
+
+  <h2>Diagram</h2>
+  <div class="diagram">
+    <svg width="100%" viewBox="0 0 680 620" xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+          <path d="M2 1L8 5L2 9" fill="none" stroke="#888780" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+        </marker>
+      </defs>
+
+      <!-- Step Functions dashed boundary -->
+      <rect x="20" y="20" width="620" height="210" rx="12" fill="none" stroke="#534AB7" stroke-width="1.5" stroke-dasharray="8 4"/>
+      <text font-family="Arial, sans-serif" font-size="12" font-weight="500" fill="#534AB7" x="32" y="38">AWS Step Functions</text>
+
+      <!-- Get Config -->
+      <rect x="240" y="50" width="200" height="44" rx="8" fill="#E6F1FB" stroke="#185FA5" stroke-width="0.5"/>
+      <text font-family="Arial, sans-serif" font-size="14" font-weight="500" fill="#0C447C" x="340" y="77" text-anchor="middle">Get config</text>
+
+      <!-- DynamoDB (top) -->
+      <rect x="500" y="50" width="120" height="44" rx="8" fill="#F1EFE8" stroke="#5F5E5A" stroke-width="0.5"/>
+      <text font-family="Arial, sans-serif" font-size="14" font-weight="500" fill="#444441" x="560" y="77" text-anchor="middle">DynamoDB</text>
+      <line x1="440" y1="72" x2="498" y2="72" stroke="#888780" stroke-width="1.5" marker-end="url(#arrow)"/>
+
+      <!-- Arrow: get config → job runner -->
+      <line x1="340" y1="94" x2="340" y2="124" stroke="#888780" stroke-width="1.5" marker-end="url(#arrow)"/>
+
+      <!-- Job runner diamond -->
+      <polygon points="340,124 420,164 340,204 260,164" fill="#fff" stroke="#5F5E5A" stroke-width="0.5"/>
+      <text font-family="Arial, sans-serif" font-size="13" font-weight="500" fill="#444441" x="340" y="160" text-anchor="middle">Job runner?</text>
+      <text font-family="Arial, sans-serif" font-size="11" fill="#5F5E5A" x="340" y="178" text-anchor="middle">S32S or S2S3</text>
+
+      <!-- Arrow left: S32S -->
+      <line x1="260" y1="164" x2="168" y2="164" stroke="#888780" stroke-width="1.5" marker-end="url(#arrow)"/>
+      <text font-family="Arial, sans-serif" font-size="12" fill="#5F5E5A" x="214" y="154" text-anchor="middle">S32S</text>
+
+      <!-- Arrow right: S2S3 -->
+      <line x1="420" y1="164" x2="512" y2="164" stroke="#888780" stroke-width="1.5" marker-end="url(#arrow)"/>
+      <text font-family="Arial, sans-serif" font-size="12" fill="#5F5E5A" x="466" y="154" text-anchor="middle">S2S3</text>
+
+      <!-- Run ECS Task -->
+      <rect x="40" y="140" width="128" height="48" rx="8" fill="#E1F5EE" stroke="#0F6E56" stroke-width="0.5"/>
+      <text font-family="Arial, sans-serif" font-size="14" font-weight="500" fill="#085041" x="104" y="160" text-anchor="middle">Run ECS task</text>
+      <text font-family="Arial, sans-serif" font-size="12" fill="#0F6E56" x="104" y="178" text-anchor="middle">async trigger</text>
+
+      <!-- Run DBR Job -->
+      <rect x="512" y="140" width="108" height="48" rx="8" fill="#E1F5EE" stroke="#0F6E56" stroke-width="0.5"/>
+      <text font-family="Arial, sans-serif" font-size="14" font-weight="500" fill="#085041" x="566" y="160" text-anchor="middle">Run DBR job</text>
+      <text font-family="Arial, sans-serif" font-size="12" fill="#0F6E56" x="566" y="178" text-anchor="middle">async trigger</text>
+
+      <!-- ECS Fargate -->
+      <rect x="40" y="270" width="128" height="48" rx="8" fill="#FAECE7" stroke="#993C1D" stroke-width="0.5"/>
+      <text font-family="Arial, sans-serif" font-size="14" font-weight="500" fill="#712B13" x="104" y="290" text-anchor="middle">ECS Fargate</text>
+      <text font-family="Arial, sans-serif" font-size="12" fill="#993C1D" x="104" y="308" text-anchor="middle">parallel processing</text>
+      <line x1="104" y1="188" x2="104" y2="268" stroke="#888780" stroke-width="1" stroke-dasharray="4 3" marker-end="url(#arrow)"/>
+
+      <!-- Databricks -->
+      <rect x="512" y="270" width="108" height="48" rx="8" fill="#FAECE7" stroke="#993C1D" stroke-width="0.5"/>
+      <text font-family="Arial, sans-serif" font-size="14" font-weight="500" fill="#712B13" x="566" y="290" text-anchor="middle">Databricks</text>
+      <text font-family="Arial, sans-serif" font-size="12" fill="#993C1D" x="566" y="308" text-anchor="middle">DBR job runs</text>
+      <line x1="566" y1="188" x2="566" y2="268" stroke="#888780" stroke-width="1" stroke-dasharray="4 3" marker-end="url(#arrow)"/>
+
+      <!-- Wait & Monitor -->
+      <rect x="240" y="390" width="200" height="48" rx="8" fill="#FAEEDA" stroke="#854F0B" stroke-width="0.5"/>
+      <text font-family="Arial, sans-serif" font-size="14" font-weight="500" fill="#633806" x="340" y="410" text-anchor="middle">Wait &amp; monitor</text>
+      <text font-family="Arial, sans-serif" font-size="12" fill="#854F0B" x="340" y="428" text-anchor="middle">EventBridge scheduler</text>
+
+      <!-- ECS Fargate → Wait/Monitor -->
+      <path d="M104 318 L104 414 L238 414" fill="none" stroke="#888780" stroke-width="1" marker-end="url(#arrow)"/>
+      <text font-family="Arial, sans-serif" font-size="12" fill="#5F5E5A" x="62" y="404" text-anchor="middle">status</text>
+
+      <!-- Wait & Monitor → Databricks poll -->
+      <path d="M440 404 L560 404 L560 320 L562 320" fill="none" stroke="#888780" stroke-width="1" stroke-dasharray="4 3" marker-end="url(#arrow)"/>
+      <text font-family="Arial, sans-serif" font-size="12" fill="#5F5E5A" x="528" y="374" text-anchor="middle">poll API</text>
+
+      <!-- Databricks → back to Wait/Monitor -->
+      <path d="M562 310 L540 310 L540 430 L442 430" fill="none" stroke="#888780" stroke-width="1" marker-end="url(#arrow)"/>
+      <text font-family="Arial, sans-serif" font-size="12" fill="#5F5E5A" x="546" y="452" text-anchor="middle">job status</text>
+
+      <!-- DynamoDB (bottom) -->
+      <rect x="240" y="490" width="200" height="56" rx="8" fill="#F1EFE8" stroke="#5F5E5A" stroke-width="0.5"/>
+      <text font-family="Arial, sans-serif" font-size="14" font-weight="500" fill="#444441" x="340" y="512" text-anchor="middle">DynamoDB</text>
+      <text font-family="Arial, sans-serif" font-size="12" fill="#5F5E5A" x="340" y="530" text-anchor="middle">write &amp; update state</text>
+      <line x1="340" y1="438" x2="340" y2="488" stroke="#888780" stroke-width="1.5" marker-end="url(#arrow)"/>
+
+    </svg>
+  </div>
+
+  <h2>Flow Summary</h2>
+  <table>
+    <tr><th>Step</th><th>Description</th></tr>
+    <tr><td>Get config</td><td>Reads job configuration from DynamoDB</td></tr>
+    <tr><td>Job runner?</td><td>Branches on runner type: S32S or S2S3</td></tr>
+    <tr><td>Run ECS task</td><td>Lambda async-triggers ECS Fargate and returns immediately</td></tr>
+    <tr><td>Run DBR job</td><td>Lambda async-triggers Databricks job and returns immediately</td></tr>
+    <tr><td>ECS Fargate</td><td>Runs parallel processing, writes status to DynamoDB on completion</td></tr>
+    <tr><td>Databricks</td><td>Runs DBR job independently (no direct DynamoDB write)</td></tr>
+    <tr><td>Wait &amp; Monitor</td><td>EventBridge scheduler polls Databricks API, writes result to DynamoDB</td></tr>
+    <tr><td>DynamoDB</td><td>Single source of truth — stores config, job status, and final state</td></tr>
+  </table>
+
+  <h2>Key Design Decisions</h2>
+  <ul>
+    <li><strong>Async triggers</strong> — both ECS and Databricks are fire-and-forget; no Lambda timeout risk</li>
+    <li><strong>DynamoDB as state store</strong> — single source of truth for all job statuses</li>
+    <li><strong>EventBridge scheduler</strong> — drives the Wait &amp; Monitor polling loop without Step Functions native wait</li>
+    <li><strong>Databricks status via API</strong> — Wait &amp; Monitor polls Databricks REST API and writes result to DynamoDB</li>
+    <li><strong>Step Functions boundary</strong> — Get config, Job runner, Run ECS task and Run DBR job are all orchestrated within AWS Step Functions</li>
+  </ul>
+
+</body>
+</html>

@@ -1,0 +1,336 @@
+{
+  "Comment": "Job Orchestration Pipeline - Fetches config, runs pre-steps, routes by runner type, monitors status, updates results, schedules next jobs",
+  "StartAt": "GetConfig",
+  "TimeoutSeconds": 86400,
+  "States": {
+    "GetConfig": {
+      "Type": "Task",
+      "Resource": "${GetConfigLambdaArn}",
+      "Comment": "Fetch job_run metadata and job_config from DynamoDB using run_id",
+      "Next": "PreStepsProcessor",
+      "Retry": [
+        {
+          "ErrorEquals": [
+            "States.TaskFailed",
+            "Lambda.ServiceException",
+            "Lambda.TooManyRequestsException",
+            "Lambda.Unknown"
+          ],
+          "IntervalSeconds": 2,
+          "MaxAttempts": 2,
+          "BackoffRate": 2
+        }
+      ],
+      "Catch": [
+        {
+          "ErrorEquals": ["States.ALL"],
+          "Next": "HandleError",
+          "ResultPath": "$.error_info"
+        }
+      ]
+    },
+
+    "PreStepsProcessor": {
+      "Type": "Task",
+      "Resource": "${PreStepsProcessorLambdaArn}",
+      "Comment": "Validate config, enrich job_config, and run pre-flight checks before routing",
+      "ResultPath": "$.pre_steps_result",
+      "Next": "RunnerTypeChoice",
+      "Retry": [
+        {
+          "ErrorEquals": [
+            "Lambda.ServiceException",
+            "Lambda.TooManyRequestsException",
+            "Lambda.Unknown"
+          ],
+          "IntervalSeconds": 2,
+          "MaxAttempts": 2,
+          "BackoffRate": 2
+        }
+      ],
+      "Catch": [
+        {
+          "ErrorEquals": ["States.ALL"],
+          "Next": "HandleError",
+          "ResultPath": "$.error_info"
+        }
+      ]
+    },
+
+    "RunnerTypeChoice": {
+      "Type": "Choice",
+      "Comment": "Route to the correct trigger lambda based on job_runner.type. No router lambda needed.",
+      "Choices": [
+        {
+          "Variable": "$.job_config.job_runner.type",
+          "StringEquals": "ECS_Fargate",
+          "Next": "TriggerEcsJob"
+        },
+        {
+          "Variable": "$.job_config.job_runner.type",
+          "StringEquals": "Databricks",
+          "Next": "TriggerDbrJob"
+        }
+      ],
+      "Default": "HandleError"
+    },
+
+    "TriggerEcsJob": {
+      "Type": "Task",
+      "Resource": "${TriggerEcsJobLambdaArn}",
+      "Comment": "Trigger an ECS Fargate task using RunTask API",
+      "ResultPath": "$.trigger_result",
+      "Next": "CheckTriggerStatus",
+      "Retry": [
+        {
+          "ErrorEquals": [
+            "States.TaskFailed",
+            "Lambda.ServiceException",
+            "Lambda.TooManyRequestsException",
+            "Lambda.Unknown"
+          ],
+          "IntervalSeconds": 2,
+          "MaxAttempts": 1,
+          "BackoffRate": 2
+        }
+      ],
+      "Catch": [
+        {
+          "ErrorEquals": ["States.ALL"],
+          "Next": "HandleError",
+          "ResultPath": "$.error_info"
+        }
+      ]
+    },
+
+    "TriggerDbrJob": {
+      "Type": "Task",
+      "Resource": "${TriggerDbrJobLambdaArn}",
+      "Comment": "Trigger a Databricks job using Jobs Run Now API",
+      "ResultPath": "$.trigger_result",
+      "Next": "CheckTriggerStatus",
+      "Retry": [
+        {
+          "ErrorEquals": [
+            "States.TaskFailed",
+            "Lambda.ServiceException",
+            "Lambda.TooManyRequestsException",
+            "Lambda.Unknown"
+          ],
+          "IntervalSeconds": 2,
+          "MaxAttempts": 1,
+          "BackoffRate": 2
+        }
+      ],
+      "Catch": [
+        {
+          "ErrorEquals": ["States.ALL"],
+          "Next": "HandleError",
+          "ResultPath": "$.error_info"
+        }
+      ]
+    },
+
+    "CheckTriggerStatus": {
+      "Type": "Choice",
+      "Comment": "If trigger failed, go to UpdateJobStatus. Otherwise enter unified poll loop.",
+      "Choices": [
+        {
+          "Variable": "$.trigger_result.trigger_status",
+          "StringEquals": "TRIGGER_FAILED",
+          "Next": "UpdateJobStatus"
+        }
+      ],
+      "Default": "InitPollCount"
+    },
+
+    "InitPollCount": {
+      "Type": "Pass",
+      "Comment": "Initialize poll counter used to cap the status polling loop",
+      "Result": 0,
+      "ResultPath": "$.poll_count",
+      "Next": "WaitForJob"
+    },
+
+    "WaitForJob": {
+      "Type": "Wait",
+      "Seconds": 60,
+      "Comment": "Wait 1 minute before checking job status",
+      "Next": "CheckJobStatus"
+    },
+
+    "CheckJobStatus": {
+      "Type": "Task",
+      "Resource": "${CheckJobStatusLambdaArn}",
+      "Comment": "Poll job status - routes internally by runner_type (ECS or Databricks)",
+      "ResultPath": "$.status_result",
+      "Next": "JobStatusChoice",
+      "Retry": [
+        {
+          "ErrorEquals": [
+            "States.TaskFailed",
+            "Lambda.ServiceException",
+            "Lambda.TooManyRequestsException",
+            "Lambda.Unknown"
+          ],
+          "IntervalSeconds": 5,
+          "MaxAttempts": 2,
+          "BackoffRate": 2
+        }
+      ],
+      "Catch": [
+        {
+          "ErrorEquals": ["States.ALL"],
+          "Next": "HandleError",
+          "ResultPath": "$.error_info"
+        }
+      ]
+    },
+
+    "JobStatusChoice": {
+      "Type": "Choice",
+      "Comment": "Route job status: RUNNING loops back with heartbeat, SUCCESS/FAILED go to update, poll cap escalates to error",
+      "Choices": [
+        {
+          "Variable": "$.poll_count",
+          "NumericGreaterThanEquals": 120,
+          "Next": "HandleError"
+        },
+        {
+          "Variable": "$.status_result.job_status",
+          "StringEquals": "RUNNING",
+          "Next": "UpdateHeartbeat"
+        },
+        {
+          "Variable": "$.status_result.job_status",
+          "StringEquals": "SUCCESS",
+          "Next": "UpdateJobStatus"
+        },
+        {
+          "Variable": "$.status_result.job_status",
+          "StringEquals": "FAILED",
+          "Next": "UpdateJobStatus"
+        }
+      ],
+      "Default": "UpdateJobStatus"
+    },
+
+    "UpdateHeartbeat": {
+      "Type": "Task",
+      "Resource": "${UpdateJobStatusLambdaArn}",
+      "Comment": "Update heartbeat for running job, then loop back to wait",
+      "ResultPath": "$.heartbeat_result",
+      "Next": "IncrementPollCount",
+      "Retry": [
+        {
+          "ErrorEquals": [
+            "States.TaskFailed",
+            "Lambda.ServiceException",
+            "Lambda.TooManyRequestsException",
+            "Lambda.Unknown"
+          ],
+          "IntervalSeconds": 2,
+          "MaxAttempts": 2,
+          "BackoffRate": 2
+        }
+      ],
+      "Catch": [
+        {
+          "ErrorEquals": ["States.ALL"],
+          "Next": "HandleError",
+          "ResultPath": "$.error_info"
+        }
+      ]
+    },
+
+    "IncrementPollCount": {
+      "Type": "Pass",
+      "Comment": "Increment poll counter to bound the polling loop",
+      "Parameters": {
+        "poll_count.$": "States.MathAdd($.poll_count, 1)"
+      },
+      "ResultPath": "$",
+      "Next": "WaitForJob"
+    },
+
+    "UpdateJobStatus": {
+      "Type": "Task",
+      "Resource": "${UpdateJobStatusLambdaArn}",
+      "Comment": "Final status update: SUCCESS, FAILED, or TRIGGER_FAILED",
+      "ResultPath": "$.update_result",
+      "Next": "CheckSuccessForNextJobs",
+      "Retry": [
+        {
+          "ErrorEquals": [
+            "States.TaskFailed",
+            "Lambda.ServiceException",
+            "Lambda.TooManyRequestsException",
+            "Lambda.Unknown"
+          ],
+          "IntervalSeconds": 2,
+          "MaxAttempts": 2,
+          "BackoffRate": 2
+        }
+      ],
+      "Catch": [
+        {
+          "ErrorEquals": ["States.ALL"],
+          "Next": "HandleError",
+          "ResultPath": "$.error_info"
+        }
+      ]
+    },
+
+    "CheckSuccessForNextJobs": {
+      "Type": "Choice",
+      "Comment": "If job succeeded, route to ScheduleNextJob. Otherwise end.",
+      "Choices": [
+        {
+          "Variable": "$.update_result.effective_status",
+          "StringEquals": "SUCCESS",
+          "Next": "ScheduleNextJob"
+        }
+      ],
+      "Default": "Done"
+    },
+
+    "ScheduleNextJob": {
+      "Type": "Task",
+      "Resource": "${ScheduleNextJobLambdaArn}",
+      "Comment": "Fetch child job configs and insert new job_run records for each next_job",
+      "ResultPath": "$.schedule_result",
+      "Next": "Done",
+      "Retry": [
+        {
+          "ErrorEquals": [
+            "States.TaskFailed",
+            "Lambda.ServiceException",
+            "Lambda.TooManyRequestsException",
+            "Lambda.Unknown"
+          ],
+          "IntervalSeconds": 2,
+          "MaxAttempts": 2,
+          "BackoffRate": 2
+        }
+      ],
+      "Catch": [
+        {
+          "ErrorEquals": ["States.ALL"],
+          "Next": "HandleError",
+          "ResultPath": "$.error_info"
+        }
+      ]
+    },
+
+    "Done": {
+      "Type": "Succeed",
+      "Comment": "Pipeline execution complete"
+    },
+
+    "HandleError": {
+      "Type": "Fail",
+      "Cause": "An unrecoverable error occurred in the state machine",
+      "Error": "StateMachineError"
+    }
+  }
+}

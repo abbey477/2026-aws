@@ -1,3 +1,4 @@
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.RowCallbackHandler;
 
@@ -23,9 +24,18 @@ import java.util.List;
  *       ({@code rs.getString("ID_TYP_ALT_IMNT")}). More readable and robust
  *       to SELECT reordering, but incurs a per-cell name lookup.</li>
  * </ul>
- * Both variants share {@link #flush(List, String, ColumnMapper)} and produce
- * identical Oracle output.
+ * Both variants share {@link #flush(MigrationStats, List, String, ColumnMapper)}
+ * and produce identical Oracle output.
+ *
+ * <p>Logging:
+ * <ul>
+ *   <li>INFO — start/end of each table migration with totals (rows, batches,
+ *       wall time, throughput rows/sec).</li>
+ *   <li>DEBUG — per-batch completion (batch number, size, elapsed ms, rolling
+ *       row count). Switch the logger to DEBUG when investigating slowdowns.</li>
+ * </ul>
  */
+@Slf4j
 public class ExchangeInstrumentAlternateIdMigration {
 
     private static final int FETCH_SIZE = 2000;   // jconn4 rows-per-round-trip
@@ -36,6 +46,9 @@ public class ExchangeInstrumentAlternateIdMigration {
             "SELECT ID_IMNT, ID_TYP_ALT_IMNT, ID_EXCHANGE_KEY, ID_IMNT_ALT, " +
             "       ID_EXCH, ID_VIEW_FLAG, DT_CHG_GRD, ID_DEL_GRD, ID_OWN_GRD " +
             "FROM EXCH_INST_ALT_ID";
+
+    /** Used in log lines so it's easy to grep one table's progress out of a multi-table run. */
+    private static final String TABLE_LABEL = "EXCH_INST_ALT_ID";
 
     private final JdbcTemplate sybaseJdbcTemplate;
     private final JdbcTemplate oracleJdbcTemplate;
@@ -69,21 +82,20 @@ public class ExchangeInstrumentAlternateIdMigration {
      *
      * <p>Each {@code rs.getX(i)} call resolves directly to a column slot with no
      * metadata lookup. This is the fastest mapping option in the JDBC API but
-     * couples the mapper to the SELECT column order — adding, removing, or
-     * reordering columns in {@link #SELECT_SQL} will silently misalign the
-     * mapping unless the indices below are updated in lockstep.
-     *
-     * <p>Use this for the hot continuous job once the team is confident the
-     * column list is stable.
+     * couples the mapper to the SELECT column order.
      */
     public void migrateByIndex() {
-        // 1. Truncate the Oracle target (same as your current code)
-        oracleJdbcTemplate.update("TRUNCATE TABLE TEMP_EXCH_INST_ALT_ID");
+        log.info("[{}] Starting migration (variant=byIndex, fetchSize={}, batchSize={})",
+                TABLE_LABEL, FETCH_SIZE, BATCH_SIZE);
+        final long startNanos = System.nanoTime();
 
-        // 2. Stream from Sybase -> buffer -> flush to Oracle
+        oracleJdbcTemplate.update("TRUNCATE TABLE TEMP_EXCH_INST_ALT_ID");
+        log.debug("[{}] Target truncated", TABLE_LABEL);
+
         final String insertSql = EXCH_INST_ALT_ID.getInsertExpr();
         final ColumnMapper<ExchangeInstrumentAlternateId> columnMapper = new ColumnMapper<>();
         final List<ExchangeInstrumentAlternateId> buffer = new ArrayList<>(BATCH_SIZE);
+        final MigrationStats stats = new MigrationStats();
 
         sybaseJdbcTemplate.query(SELECT_SQL, (RowCallbackHandler) rs -> {
             ExchangeInstrumentAlternateId row = new ExchangeInstrumentAlternateId();
@@ -100,14 +112,15 @@ public class ExchangeInstrumentAlternateIdMigration {
             buffer.add(row);
 
             if (buffer.size() >= BATCH_SIZE) {
-                flush(buffer, insertSql, columnMapper);
+                flush(stats, buffer, insertSql, columnMapper);
             }
         });
 
-        // 3. Flush leftover rows after the ResultSet is exhausted
         if (!buffer.isEmpty()) {
-            flush(buffer, insertSql, columnMapper);
+            flush(stats, buffer, insertSql, columnMapper);
         }
+
+        logCompletion("byIndex", stats, startNanos);
     }
 
     /**
@@ -115,26 +128,21 @@ public class ExchangeInstrumentAlternateIdMigration {
      *
      * <p>Each {@code rs.getX("COL_NAME")} call performs a (driver-cached)
      * case-insensitive lookup against the ResultSetMetaData to resolve the
-     * column index. The cost is small per call but real when multiplied by
-     * {@code columns × rows} on every job run — for this table, that's roughly
-     * 9 × N lookups per migration.
-     *
-     * <p>Pros: self-documenting, robust to SELECT column reordering, no silent
-     * misalignment if a column is added or removed.
-     * <p>Cons: measurable per-cell overhead vs. by-index.
-     *
-     * <p>Run alongside {@link #migrateByIndex()} on representative data and
-     * compare wall-clock time. Pick the variant whose trade-off fits the job's
-     * accuracy and performance requirements.
+     * column index. Slightly slower per cell, more readable, robust to SELECT
+     * column reordering.
      */
     public void migrateByName() {
-        // 1. Truncate the Oracle target
-        oracleJdbcTemplate.update("TRUNCATE TABLE TEMP_EXCH_INST_ALT_ID");
+        log.info("[{}] Starting migration (variant=byName, fetchSize={}, batchSize={})",
+                TABLE_LABEL, FETCH_SIZE, BATCH_SIZE);
+        final long startNanos = System.nanoTime();
 
-        // 2. Stream from Sybase -> buffer -> flush to Oracle
+        oracleJdbcTemplate.update("TRUNCATE TABLE TEMP_EXCH_INST_ALT_ID");
+        log.debug("[{}] Target truncated", TABLE_LABEL);
+
         final String insertSql = EXCH_INST_ALT_ID.getInsertExpr();
         final ColumnMapper<ExchangeInstrumentAlternateId> columnMapper = new ColumnMapper<>();
         final List<ExchangeInstrumentAlternateId> buffer = new ArrayList<>(BATCH_SIZE);
+        final MigrationStats stats = new MigrationStats();
 
         sybaseJdbcTemplate.query(SELECT_SQL, (RowCallbackHandler) rs -> {
             ExchangeInstrumentAlternateId row = new ExchangeInstrumentAlternateId();
@@ -151,39 +159,68 @@ public class ExchangeInstrumentAlternateIdMigration {
             buffer.add(row);
 
             if (buffer.size() >= BATCH_SIZE) {
-                flush(buffer, insertSql, columnMapper);
+                flush(stats, buffer, insertSql, columnMapper);
             }
         });
 
-        // 3. Flush leftover rows after the ResultSet is exhausted
         if (!buffer.isEmpty()) {
-            flush(buffer, insertSql, columnMapper);
+            flush(stats, buffer, insertSql, columnMapper);
         }
+
+        logCompletion("byName", stats, startNanos);
     }
 
     /**
-     * Flushes the current buffer of rows to Oracle in a single batch and clears it.
+     * Flushes the current buffer of rows to Oracle in a single batch, clears the
+     * buffer, and updates running stats.
      *
-     * <p>Called both from inside the streaming callback (when the buffer fills up
-     * to {@link #BATCH_SIZE}) and once after the ResultSet is exhausted (to drain
-     * any remaining rows that didn't fill a final batch).
+     * <p>Logs at DEBUG per batch — at INFO this would be 200+ lines for a 1M row
+     * table, which drowns the logs. Bump the logger to DEBUG when troubleshooting.
      *
-     * <p>{@link List#clear()} drops references but retains the underlying array
-     * capacity, so subsequent fills don't trigger re-allocation.
-     *
-     * @param buffer        rows pending insert; cleared on return
-     * @param insertSql     parameterized INSERT statement for Oracle
-     * @param columnMapper  binds a row's fields to the PreparedStatement parameters
+     * @param stats        running counters to update
+     * @param buffer       rows pending insert; cleared on return
+     * @param insertSql    parameterized INSERT statement for Oracle
+     * @param columnMapper binds a row's fields to PreparedStatement parameters
      */
-    private void flush(List<ExchangeInstrumentAlternateId> buffer,
+    private void flush(MigrationStats stats,
+                       List<ExchangeInstrumentAlternateId> buffer,
                        String insertSql,
                        ColumnMapper<ExchangeInstrumentAlternateId> columnMapper) {
+        final int rowsInThisBatch = buffer.size();
+        final long batchStartNanos = System.nanoTime();
+
         oracleJdbcTemplate.batchUpdate(
                 insertSql,
                 buffer,
                 BATCH_SIZE,
                 columnMapper::setParameters
         );
+
+        final long batchElapsedMs = (System.nanoTime() - batchStartNanos) / 1_000_000;
+        stats.batchCount++;
+        stats.totalRows += rowsInThisBatch;
+
+        log.debug("[{}] Batch {} complete — rows={}, elapsedMs={}, totalRowsSoFar={}",
+                TABLE_LABEL, stats.batchCount, rowsInThisBatch, batchElapsedMs, stats.totalRows);
+
         buffer.clear(); // free references; ArrayList keeps capacity, no re-alloc next round
+    }
+
+    /**
+     * Emits the end-of-table summary at INFO level, including throughput.
+     */
+    private void logCompletion(String variant, MigrationStats stats, long startNanos) {
+        final long totalElapsedMs = (System.nanoTime() - startNanos) / 1_000_000;
+        final double seconds = Math.max(totalElapsedMs / 1000.0, 0.001); // avoid div-by-zero
+        final long rowsPerSec = (long) (stats.totalRows / seconds);
+
+        log.info("[{}] Migration complete (variant={}) — totalRows={}, batches={}, elapsedMs={}, throughput={} rows/sec",
+                TABLE_LABEL, variant, stats.totalRows, stats.batchCount, totalElapsedMs, rowsPerSec);
+    }
+
+    /** Mutable counters for one migration run. Not thread-safe — single-threaded callback. */
+    private static final class MigrationStats {
+        long totalRows = 0;
+        int batchCount = 0;
     }
 }

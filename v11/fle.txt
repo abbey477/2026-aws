@@ -1,1 +1,2 @@
 
+aws dynamodb query --table-name app-jobRun --key-condition-expression "run_id = :rid" --expression-attribute-values "{\":rid\":{\"S\":\"run-curr-02\"}}"

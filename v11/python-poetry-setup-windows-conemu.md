@@ -32,6 +32,21 @@ Before we start, here's the mental map:
 
 ---
 
+## Two Ways to Install Poetry
+
+Both methods produce an **isolated** Poetry install — the only safe way. They differ only in *who* manages the isolation:
+
+| | curl installer | pipx installer |
+|---|---|---|
+| Official? | ✅ Yes | ✅ Also fine |
+| Needs `curl`? | ✅ Yes | ❌ No |
+| Self-update? | `poetry self update` | `pipx upgrade poetry` |
+| Install location | `%APPDATA%\pypoetry\` | `~\pipx\venvs\poetry\` |
+
+> ❌ **Don't use `pip install poetry`.** It puts Poetry in shared space where its dependencies can clash with your projects. Use one of the two methods above.
+
+---
+
 ## Step 1: Verify Python
 
 Open ConEmu. Pick a shell (**Git Bash recommended** — Unix-style commands work as written).
@@ -47,6 +62,9 @@ If "command not found," install Python from [python.org](https://www.python.org/
 ---
 
 ## Step 2: Install pipx (Using pip)
+
+> 💡 **Why install pipx?** It's required for Option B of installing Poetry (fallback if `curl` is blocked). It's also useful for other CLI tools (black, ruff, mypy) later.
+> If you're confident `curl` will work for installing Poetry, you can skip Steps 2–3 and jump to Step 4.
 
 ```bash
 python -m pip install --user pipx
@@ -79,7 +97,39 @@ pipx --version
 
 ---
 
-## Step 4: Install Poetry via pipx
+## Step 4: Install Poetry
+
+You have **two options**. Try Option A first — it's the official method. If `curl` is blocked, fall back to Option B.
+
+> 💡 **Both produce identical results** — an isolated Poetry install that can't conflict with your projects. Only the installer differs.
+
+---
+
+### Option A: Official curl installer (try first)
+
+```bash
+curl -sSL https://install.python-poetry.org | python -
+```
+
+**What just happened:**
+- Poetry got its own isolated venv at: `C:\Users\<you>\AppData\Roaming\pypoetry\venv\`
+- A `poetry` command shim was placed at: `C:\Users\<you>\AppData\Roaming\Python\Scripts\poetry`
+- The installer may print a PATH instruction — follow it if shown.
+
+**Pros:**
+- Official, recommended method.
+- `poetry self update` works (built-in self-upgrade).
+
+**Cons:**
+- Requires `curl` and outbound network access to `install.python-poetry.org`. If your machine blocks either, this fails.
+
+If you see an error like `curl: command not found`, `SSL certificate problem`, or a timeout → skip to Option B.
+
+---
+
+### Option B: pipx installer (fallback if curl is blocked)
+
+> Skip this if Option A worked.
 
 ```bash
 pipx install poetry
@@ -89,11 +139,24 @@ pipx install poetry
 - Poetry got its own isolated venv at: `C:\Users\<you>\pipx\venvs\poetry\`
 - A `poetry` command shim was placed at: `C:\Users\<you>\.local\bin\poetry`
 
-Verify:
+**Pros:**
+- Works without `curl`.
+- pipx becomes useful for other CLI tools later (black, ruff, mypy).
+
+**Cons:**
+- `poetry self update` doesn't work — use `pipx upgrade poetry` instead.
+
+---
+
+### Verify (either option)
 
 ```bash
 poetry --version
 ```
+
+You should see something like `Poetry (version 1.8.x)` or `2.x.x`.
+
+If "command not found" → close ConEmu entirely and reopen. PATH changes need a fresh shell.
 
 ---
 
@@ -212,7 +275,11 @@ python -m pip install --user pipx
 python -m pipx ensurepath
 # RESTART ConEmu entirely
 
-pipx install poetry
+# Install Poetry — try Option A first
+curl -sSL https://install.python-poetry.org | python -
+# If curl is blocked, use Option B instead:
+# pipx install poetry
+
 poetry --version
 
 mkdir -p /c/dev/venvs
@@ -238,11 +305,14 @@ C:\Users\<you>\AppData\Local\Programs\Python\Python3xx\
 
 C:\Users\<you>\.local\bin\
     ├── pipx                                        ← pipx command
-    └── poetry                                      ← Poetry command (shim)
+    └── poetry                                      ← Poetry shim (if installed via pipx)
 
-C:\Users\<you>\pipx\venvs\poetry\
-    ├── bin\python                                  ← Poetry's own Python
-    └── lib\...\poetry\                             ← Poetry's code + deps
+C:\Users\<you>\AppData\Roaming\Python\Scripts\
+    └── poetry                                      ← Poetry shim (if installed via curl)
+
+# Poetry's isolated install — ONE of these, depending on installer:
+C:\Users\<you>\pipx\venvs\poetry\                   ← if installed via pipx
+C:\Users\<you>\AppData\Roaming\pypoetry\venv\       ← if installed via curl
 
 C:\dev\venvs\sample-hello-<hash>-py3.x\             ← YOUR PROJECT'S VENV
     ├── bin\python                                  ← project Python

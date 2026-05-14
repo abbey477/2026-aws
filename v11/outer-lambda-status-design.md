@@ -1,0 +1,85 @@
+# Outer lambda status tracking — design
+
+## Flow
+
+<svg width="100%" viewBox="0 0 720 560" xmlns="http://www.w3.org/2000/svg" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif">
+<defs>
+<marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+<path d="M2 1L8 5L2 9" fill="none" stroke="#5F5E5A" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+</marker>
+</defs>
+<rect x="20" y="30" width="320" height="500" rx="14" fill="none" stroke="#B4B2A9" stroke-width="0.5" stroke-dasharray="6 4"/>
+<text x="40" y="52" font-size="12" fill="#5F5E5A">Step function</text>
+<rect x="380" y="30" width="320" height="280" rx="14" fill="none" stroke="#B4B2A9" stroke-width="0.5" stroke-dasharray="6 4"/>
+<text x="400" y="52" font-size="12" fill="#5F5E5A">Outside step function</text>
+<rect x="60" y="80" width="240" height="60" rx="8" fill="#E6F1FB" stroke="#185FA5" stroke-width="0.5"/>
+<text x="180" y="106" text-anchor="middle" font-size="14" font-weight="500" fill="#0C447C">E 2.1 calls</text>
+<text x="180" y="124" text-anchor="middle" font-size="12" fill="#185FA5">Invokes marker (async)</text>
+<line x1="300" y1="110" x2="418" y2="110" stroke="#5F5E5A" stroke-width="1" marker-end="url(#arrow)"/>
+<rect x="420" y="80" width="240" height="60" rx="8" fill="#FAECE7" stroke="#993C1D" stroke-width="0.5"/>
+<text x="540" y="106" text-anchor="middle" font-size="14" font-weight="500" fill="#712B13">Marker lambda</text>
+<text x="540" y="124" text-anchor="middle" font-size="12" fill="#993C1D">Writes status updates</text>
+<line x1="180" y1="140" x2="180" y2="174" stroke="#5F5E5A" stroke-width="1" marker-end="url(#arrow)"/>
+<rect x="60" y="174" width="240" height="48" rx="8" fill="#FAEEDA" stroke="#854F0B" stroke-width="0.5"/>
+<text x="180" y="202" text-anchor="middle" font-size="14" font-weight="500" fill="#633806">Wait state (30s)</text>
+<line x1="180" y1="222" x2="180" y2="246" stroke="#5F5E5A" stroke-width="1" marker-end="url(#arrow)"/>
+<rect x="60" y="246" width="240" height="60" rx="8" fill="#E6F1FB" stroke="#185FA5" stroke-width="0.5"/>
+<text x="180" y="272" text-anchor="middle" font-size="14" font-weight="500" fill="#0C447C">Check status lambda</text>
+<text x="180" y="290" text-anchor="middle" font-size="12" fill="#185FA5">Reads DynamoDB</text>
+<line x1="180" y1="306" x2="180" y2="330" stroke="#5F5E5A" stroke-width="1" marker-end="url(#arrow)"/>
+<rect x="60" y="330" width="240" height="60" rx="8" fill="#F1EFE8" stroke="#5F5E5A" stroke-width="0.5"/>
+<text x="180" y="356" text-anchor="middle" font-size="14" font-weight="500" fill="#2C2C2A">Choice: done?</text>
+<text x="180" y="374" text-anchor="middle" font-size="12" fill="#5F5E5A">Loop or continue</text>
+<path d="M60 358 L 36 358 L 36 198 L 60 198" stroke="#888780" stroke-width="0.5" fill="none" marker-end="url(#arrow)" stroke-dasharray="4 4"/>
+<text x="24" y="282" text-anchor="middle" font-size="12" fill="#5F5E5A">no</text>
+<line x1="180" y1="390" x2="180" y2="414" stroke="#5F5E5A" stroke-width="1" marker-end="url(#arrow)"/>
+<text x="200" y="406" text-anchor="start" font-size="12" fill="#5F5E5A">yes</text>
+<rect x="60" y="414" width="240" height="48" rx="8" fill="#F1EFE8" stroke="#5F5E5A" stroke-width="0.5"/>
+<text x="180" y="442" text-anchor="middle" font-size="14" font-weight="500" fill="#2C2C2A">Next step in workflow</text>
+<line x1="540" y1="140" x2="540" y2="200" stroke="#5F5E5A" stroke-width="1" marker-end="url(#arrow)"/>
+<text x="570" y="174" text-anchor="start" font-size="12" fill="#5F5E5A">writes status</text>
+<rect x="420" y="200" width="240" height="60" rx="8" fill="#E1F5EE" stroke="#0F6E56" stroke-width="0.5"/>
+<text x="540" y="226" text-anchor="middle" font-size="14" font-weight="500" fill="#085041">DynamoDB</text>
+<text x="540" y="244" text-anchor="middle" font-size="12" fill="#0F6E56">Status table</text>
+<path d="M420 232 Q 340 232 300 272" stroke="#888780" stroke-width="0.5" fill="none" marker-end="url(#arrow)" stroke-dasharray="4 4"/>
+<text x="360" y="222" text-anchor="middle" font-size="12" fill="#5F5E5A">read</text>
+<text x="360" y="490" text-anchor="middle" font-size="12" fill="#5F5E5A">Status values written by marker lambda:</text>
+<rect x="230" y="504" width="100" height="32" rx="6" fill="#E6F1FB" stroke="#185FA5" stroke-width="0.5"/>
+<text x="280" y="525" text-anchor="middle" font-size="12" fill="#0C447C">STARTED</text>
+<rect x="340" y="504" width="100" height="32" rx="6" fill="#EAF3DE" stroke="#3B6D11" stroke-width="0.5"/>
+<text x="390" y="525" text-anchor="middle" font-size="12" fill="#27500A">COMPLETED</text>
+<rect x="450" y="504" width="100" height="32" rx="6" fill="#FCEBEB" stroke="#A32D2D" stroke-width="0.5"/>
+<text x="500" y="525" text-anchor="middle" font-size="12" fill="#791F1F">FAILED</text>
+</svg>
+
+## Status values
+
+`STARTED` → `COMPLETED` or `FAILED`
+
+## Correlation ID
+
+- Generated by `E 2.1 calls` (use Step Function execution ID or new UUID)
+- Passed to marker lambda on invoke
+- Used as partition key in DynamoDB
+- Passed to check status lambda as input so it knows which row to read
+
+## Components
+
+- **E 2.1 calls** — generates correlation ID, invokes marker lambda async, returns ID
+- **Marker lambda** — writes `STARTED`, does its work, writes `COMPLETED` / `FAILED`
+- **Check status lambda** — reads row by correlation ID, returns status
+- **Wait + Choice** — native Step Functions states, no lambda needed
+
+## Why this design
+
+- One-way calls only (left to right)
+- No callbacks into the step function
+- Marker lambda owns all writes — no cross-team contract
+- DynamoDB lives in our account
+
+## Questions for the architect
+
+- Correlation ID source — execution ID or new UUID?
+- DynamoDB table — new or existing? TTL policy?
+- Max poll attempts before timing out?
+- Marker lambda timeout — needs to cover full event mgmt service duration

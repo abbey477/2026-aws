@@ -1,0 +1,4 @@
+convert batch id to int data type
+log db for oracle and sybase queries
+hard stop on proc proceessor
+add log start and completed even when no data in the log table.

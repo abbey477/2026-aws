@@ -1,0 +1,69 @@
+private final Object[] locks = newLocks(64);
+
+private static Object[] newLocks(int n) {
+    Object[] a = new Object[n];
+    for (int i = 0; i < n; i++) a[i] = new Object();
+    return a;
+}
+
+public boolean send(Payload payload, String subject) {
+    if (Boolean.FALSE.equals(props.enabled())) {
+        log.warn("=============== EMAIL DISABLED =============== subject=\"{}\" (email.enabled=false)", subject);
+        return true;
+    }
+
+    String key = throttleKey(payload);
+
+    // Fast path: already sent recently, bail out without locking
+    if (emailCache.getIfPresent(key) != null) {
+        log.warn("=============== EMAIL THROTTLED =============== key={} ttlMin={}",
+                key, props.cacheTtlMinutes());
+        return true;
+    }
+
+    // Slow path: serialize threads racing on the SAME key
+    synchronized (locks[Math.floorMod(key.hashCode(), locks.length)]) {
+
+        // Double-check inside the lock: another thread may have just sent it
+        if (emailCache.getIfPresent(key) != null) {
+            log.warn("=============== EMAIL THROTTLED =============== key={} ttlMin={}",
+                    key, props.cacheTtlMinutes());
+            return true;
+        }
+
+        try {
+            doSend(payload, subject);
+            // Only cache AFTER successful send → failures naturally retry,
+            // no manual invalidate() needed
+            emailCache.put(key, Boolean.TRUE);
+            return true;
+        } catch (Exception e) {
+            log.error("=============== EMAIL SEND FAILED =============== fid={} to={} subject=\"{}\" reason={}",
+                    props.fid(), props.toAddress(), subject, e.getMessage(), e);
+            return false;
+        }
+    }
+}
+
+private void doSend(Payload payload, String subject) throws Exception {
+    String html = render(payload);
+    ExchangeService svc = new ExchangeService(ExchangeVersion.Exchange2010_SP2);
+    try {
+        svc.setCredentials(new WebCredentials(props.fid(), credentialProvider.password(), props.domain()));
+        svc.setUrl(new URI(props.ewsUrl()));
+
+        EmailMessage msg = new EmailMessage(svc);
+        msg.setSubject(subject);
+        msg.setBody(new MessageBody(BodyType.HTML, html));
+        for (String to : props.toAddress()) msg.getToRecipients().add(to);
+
+        log.info("=============== SENDING EMAIL =============== fid={} to={} subject=\"{}\"",
+                props.fid(), props.toAddress(), subject);
+        long t0 = System.currentTimeMillis();
+        msg.sendAndSaveCopy();
+        log.info("=============== EMAIL SENT =============== fid={} to={} subject=\"{}\" elapsedMs={}",
+                props.fid(), props.toAddress(), subject, System.currentTimeMillis() - t0);
+    } finally {
+        try { svc.close(); } catch (Exception ignore) { /* not fatal */ }
+    }
+}

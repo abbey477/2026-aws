@@ -67,3 +67,98 @@ private void doSend(Payload payload, String subject) throws Exception {
         try { svc.close(); } catch (Exception ignore) { /* not fatal */ }
     }
 }
+
+
+
+-------------------------------------------------------------------------------------------
+
+
+
+
+import java.net.URI;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
+
+import com.github.benmanes.caffeine.cache.Cache;
+import microsoft.exchange.webservices.data.core.ExchangeService;
+import microsoft.exchange.webservices.data.core.enumeration.misc.ExchangeVersion;
+import microsoft.exchange.webservices.data.core.enumeration.property.BodyType;
+import microsoft.exchange.webservices.data.core.service.item.EmailMessage;
+import microsoft.exchange.webservices.data.credential.WebCredentials;
+import microsoft.exchange.webservices.data.property.complex.MessageBody;
+
+public class EmailService {
+
+    private static final String TEMPLATE_FILE = "templates/email_notification.html";
+
+    private final MailProperties props;
+    private final EwsCredentialProvider credentialProvider;
+    private final Cache<String, Boolean> emailCache;
+    private final String templateHtml = loadTemplate();
+
+    // Tracks keys currently being sent. Separate from emailCache (which is the
+    // TTL throttle). An entry exists only while doSend() is running for that key.
+    private final ConcurrentMap<String, Boolean> inFlight = new ConcurrentHashMap<>();
+
+    public boolean send(Payload payload, String subject) {
+        if (Boolean.FALSE.equals(props.enabled())) {
+            log.warn("=============== EMAIL DISABLED =============== subject=\"{}\" (email.enabled=false)", subject);
+            return true;
+        }
+
+        String key = throttleKey(payload);
+
+        // Throttle check: already sent recently within the TTL window
+        if (emailCache.getIfPresent(key) != null) {
+            log.warn("=============== EMAIL THROTTLED =============== key={} ttlMin={}",
+                    key, props.cacheTtlMinutes());
+            return true;
+        }
+
+        // In-flight check: another thread is sending this exact key right now.
+        // putIfAbsent is atomic — exactly one thread per key gets null back.
+        if (inFlight.putIfAbsent(key, Boolean.TRUE) != null) {
+            log.warn("=============== EMAIL IN FLIGHT =============== key={}", key);
+            return true;
+        }
+
+        try {
+            doSend(payload, subject);
+            // Only cache on success → failures naturally retry on the next message
+            emailCache.put(key, Boolean.TRUE);
+            return true;
+        } catch (Exception e) {
+            log.error("=============== EMAIL SEND FAILED =============== fid={} to={} subject=\"{}\" reason={}",
+                    props.fid(), props.toAddress(), subject, e.getMessage(), e);
+            return false;
+        } finally {
+            // Always release the in-flight slot, whether send succeeded or failed
+            inFlight.remove(key);
+        }
+    }
+
+    private void doSend(Payload payload, String subject) throws Exception {
+        String html = render(payload);
+        ExchangeService svc = new ExchangeService(ExchangeVersion.Exchange2010_SP2);
+        try {
+            svc.setCredentials(new WebCredentials(props.fid(), credentialProvider.password(), props.domain()));
+            svc.setUrl(new URI(props.ewsUrl()));
+
+            EmailMessage msg = new EmailMessage(svc);
+            msg.setSubject(subject);
+            msg.setBody(new MessageBody(BodyType.HTML, html));
+            for (String to : props.toAddress()) msg.getToRecipients().add(to);
+
+            log.info("=============== SENDING EMAIL =============== fid={} to={} subject=\"{}\"",
+                    props.fid(), props.toAddress(), subject);
+            long t0 = System.currentTimeMillis();
+            msg.sendAndSaveCopy();
+            log.info("=============== EMAIL SENT =============== fid={} to={} subject=\"{}\" elapsedMs={}",
+                    props.fid(), props.toAddress(), subject, System.currentTimeMillis() - t0);
+        } finally {
+            try { svc.close(); } catch (Exception ignore) { /* not fatal */ }
+        }
+    }
+
+    // ... throttleKey(), safe(), render(), loadTemplate() unchanged ...
+}

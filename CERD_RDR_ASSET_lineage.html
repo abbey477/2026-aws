@@ -1,0 +1,512 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CERD to RDR_ASSET Lineage</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=Instrument+Sans:wght@400;500;600;700&display=swap">
+<style>
+/* Layout: two-lane lineage canvas (side inputs | Flow 1 identifiers | Flow 2 instrument) + sticky inspector; run order, column trace and reference below. Color = row grain. */
+:root{
+  --bg:#f5f7f9; --surface:#ffffff; --fg:#16202b; --muted:#5a6676; --line:#cfd6df; --edge:#7a8696; --band:#eef2f6;
+  --src:#5a6676; --src-bg:#eef1f4;
+  --tall:#b8720e; --tall-bg:#fdf2e1;
+  --key:#6a4cc0; --key-bg:#f0ebfb;
+  --wide:#0e7a72; --wide-bg:#e2f3f1;
+  --ext:#8a6d5a; --ext-bg:#f5efeb;
+  --sel:#2457d6; --warn:#b23c17; --warn-bg:#fff0e8;
+  --mono:"IBM Plex Mono",ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  --sans:"Instrument Sans",system-ui,-apple-system,"Segoe UI",sans-serif;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#0e1319; --surface:#151c24; --fg:#e3e8ee; --muted:#95a1af; --line:#2a343f; --edge:#6d7b8a; --band:#121920;
+  --src:#9aa6b4; --src-bg:#1b222b; --tall:#e6a443; --tall-bg:#2a2113; --key:#ab93f2; --key-bg:#221b35;
+  --wide:#40c4b5; --wide-bg:#0f2a2b; --ext:#c4a48e; --ext-bg:#261f1a; --sel:#7ea4ff; --warn:#f2875c; --warn-bg:#2d1a12;
+  color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#0e1319; --surface:#151c24; --fg:#e3e8ee; --muted:#95a1af; --line:#2a343f; --edge:#6d7b8a; --band:#121920;
+  --src:#9aa6b4; --src-bg:#1b222b; --tall:#e6a443; --tall-bg:#2a2113; --key:#ab93f2; --key-bg:#221b35;
+  --wide:#40c4b5; --wide-bg:#0f2a2b; --ext:#c4a48e; --ext-bg:#261f1a; --sel:#7ea4ff; --warn:#f2875c; --warn-bg:#2d1a12;
+  color-scheme:dark}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--fg);font-family:var(--sans);font-size:15px;line-height:1.5;padding:28px 20px 48px}
+.wrap{max-width:1440px;margin:0 auto;display:grid;gap:28px}
+header h1{font-size:1.75rem;margin:0 0 6px;letter-spacing:-.01em;text-wrap:balance}
+header p{margin:0;color:var(--muted);max-width:72ch}
+code,.mono{font-family:var(--mono);font-size:.88em}
+.legend{display:flex;flex-wrap:wrap;gap:8px 18px;margin-top:14px;font-size:13px;color:var(--muted)}
+.legend span{display:inline-flex;align-items:center;gap:7px}
+.sw{width:14px;height:14px;border-radius:3px;border:2px solid}
+.ln{width:22px;height:0;border-top:2px dashed}
+.main{display:grid;grid-template-columns:minmax(0,1fr) 360px;gap:24px;align-items:start}
+@media (max-width:1100px){.main{grid-template-columns:minmax(0,1fr)}}
+.canvas{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:12px;overflow-x:auto}
+.canvas svg{display:block;width:100%;min-width:820px;height:auto}
+.hint{font-size:13px;color:var(--muted);margin:4px 4px 8px}
+/* svg */
+.band{fill:var(--band)}
+.lanelbl{font:700 10.5px var(--sans);letter-spacing:.09em;fill:var(--muted)}
+.note{font:500 11.5px var(--sans);fill:var(--muted)}
+.edge{fill:none;stroke:var(--edge);stroke-width:1.6}
+.edge.side{stroke-dasharray:4 3}
+.edge.fb{stroke-dasharray:5 4;stroke:var(--key)}
+.edge.dep{stroke-dasharray:6 4;stroke:var(--warn);stroke-width:2}
+.elbl{font:500 10.5px var(--sans);fill:var(--muted)}
+.elbl.k{fill:var(--key)} .elbl.w{fill:var(--warn);font-weight:700}
+.arrow{fill:var(--edge)} .arrow-k{fill:var(--key)} .arrow-w{fill:var(--warn)}
+.node{cursor:pointer}
+.node rect.box{stroke-width:2}
+.node .div{stroke-width:1;opacity:.45}
+.node .schema{font:500 10.5px var(--mono);fill:var(--muted);letter-spacing:.04em}
+.node .name{font:600 13.5px var(--mono);fill:var(--fg)}
+.node .chip{font:700 9.5px var(--sans);letter-spacing:.08em}
+.node .bm{font:400 11.5px var(--mono);fill:var(--fg)}
+.node .bs{font:400 12px var(--sans);fill:var(--fg)}
+.node .bh{font:700 9.5px var(--sans);letter-spacing:.09em;fill:var(--muted)}
+.g-src rect.box{fill:var(--src-bg);stroke:var(--src)} .g-src .chip,.g-src .div{fill:var(--src);stroke:var(--src)}
+.g-tall rect.box{fill:var(--tall-bg);stroke:var(--tall)} .g-tall .chip,.g-tall .div{fill:var(--tall);stroke:var(--tall)}
+.g-key rect.box{fill:var(--key-bg);stroke:var(--key)} .g-key .chip,.g-key .div{fill:var(--key);stroke:var(--key)}
+.g-wide rect.box{fill:var(--wide-bg);stroke:var(--wide)} .g-wide .chip,.g-wide .div{fill:var(--wide);stroke:var(--wide)}
+.g-ext rect.box{fill:var(--ext-bg);stroke:var(--ext);stroke-dasharray:4 3} .g-ext .chip,.g-ext .div{fill:var(--ext);stroke:var(--ext)}
+.g-final rect.box{stroke-width:3.5}
+.g-assumed rect.box{stroke-dasharray:6 4}
+.node.on rect.box{stroke:var(--sel);stroke-width:3.5}
+.node:focus-visible,.proc:focus-visible{outline:none}
+.node:focus-visible rect.box,.proc:focus-visible rect{stroke:var(--sel);stroke-width:3}
+.proc{cursor:pointer}
+.proc rect{fill:var(--surface);stroke:var(--line);stroke-width:1}
+.proc:hover rect{stroke:var(--edge)}
+.proc .pn{font:600 11.5px var(--mono);fill:var(--fg)}
+.proc .ps{font:400 11px var(--sans);fill:var(--muted)}
+.proc .pj{font:700 9.5px var(--sans);letter-spacing:.07em;fill:var(--sel)}
+.proc.on rect{stroke:var(--sel);stroke-width:2.5}
+/* inspector */
+.insp{position:sticky;top:calc(env(safe-area-inset-top,0px) + 16px);background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:18px 18px 20px;min-width:0;max-height:calc(100vh - 32px);overflow-y:auto}
+.insp .kind{font-size:11px;font-weight:700;letter-spacing:.09em;text-transform:uppercase;color:var(--muted)}
+.insp h2{font-family:var(--mono);font-size:1rem;margin:4px 0 2px;word-break:break-word}
+.insp .sub{color:var(--muted);font-size:13.5px;margin:0 0 12px}
+.insp dl{margin:0;display:grid;gap:12px}
+.insp dt{font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+.insp dd{margin:3px 0 0;font-size:14px}
+.insp dd ul{margin:2px 0 0;padding-left:18px} .insp dd li{margin:2px 0}
+.insp pre{font-family:var(--mono);font-size:12.5px;background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:8px 10px;margin:4px 0 0;overflow-x:auto;white-space:pre}
+.pill{display:inline-block;font-size:11px;font-weight:700;letter-spacing:.06em;padding:2px 8px;border-radius:999px;border:1.5px solid}
+.p-src{color:var(--src);border-color:var(--src)} .p-tall{color:var(--tall);border-color:var(--tall)}
+.p-key{color:var(--key);border-color:var(--key)} .p-wide{color:var(--wide);border-color:var(--wide)}
+.p-ext{color:var(--ext);border-color:var(--ext)} .p-proc{color:var(--fg);border-color:var(--line)}
+.warn{background:var(--warn-bg);color:var(--warn);border-radius:6px;padding:8px 10px;font-size:13.5px}
+.warn code{color:inherit}
+/* reference */
+.ref{display:grid;grid-template-columns:minmax(0,1.4fr) minmax(0,1fr);gap:24px}
+.ref .full{grid-column:1/-1}
+@media (max-width:1100px){.ref{grid-template-columns:minmax(0,1fr)}}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:18px;min-width:0}
+.card h3{margin:0 0 12px;font-size:1.05rem}
+.card .lead{margin:-4px 0 14px;color:var(--muted);font-size:13.5px;max-width:80ch}
+.tbl{overflow-x:auto}
+table{border-collapse:collapse;width:100%;font-size:13.5px}
+th{text-align:left;font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);font-weight:700;padding:6px 12px 8px 0;border-bottom:1px solid var(--line)}
+td{padding:8px 12px 8px 0;border-bottom:1px solid var(--line);vertical-align:top}
+td code{white-space:nowrap}
+.conf{display:inline-block;font-size:11px;font-weight:700;letter-spacing:.05em;padding:1px 8px;border-radius:999px;border:1.5px solid}
+.c-shown{color:var(--wide);border-color:var(--wide)} .c-inf{color:var(--tall);border-color:var(--tall)} .c-unk{color:var(--muted);border-color:var(--line)}
+.steps{display:grid;gap:12px;margin:0;padding:0;list-style:none}
+.steps li{display:grid;grid-template-columns:auto minmax(0,1fr);gap:10px;align-items:start}
+.steps .n{font:600 12px var(--mono);width:24px;height:24px;border-radius:50%;display:grid;place-items:center;border:2px solid}
+.steps .t{min-width:0}
+.steps b{font-family:var(--mono);font-size:13.5px}
+.jobs{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}
+@media (max-width:760px){.jobs{grid-template-columns:minmax(0,1fr)}}
+.job{border:1px solid var(--line);border-radius:8px;padding:14px;min-width:0}
+.job h4{margin:0 0 2px;font-family:var(--mono);font-size:13.5px}
+.job .who{font-size:12.5px;color:var(--muted);margin:0 0 12px}
+.run{margin:0;padding:0;list-style:none;display:grid;gap:9px;counter-reset:r}
+.run li{display:grid;grid-template-columns:22px minmax(0,1fr);gap:8px;font-size:13.5px}
+.run li::before{counter-increment:r;content:counter(r);font:600 11px var(--mono);color:var(--sel);border:1.5px solid var(--sel);border-radius:50%;width:20px;height:20px;display:grid;place-items:center}
+.run .x{color:var(--warn);font-weight:600}
+.qs{display:grid;gap:10px;margin-top:16px}
+</style>
+</head>
+<body>
+
+<div class="wrap">
+  <header>
+    <h1>CERD → LRIDBO.RDR_ASSET lineage</h1>
+    <p>Two lanes: Flow 1 turns alternate IDs into one keyed row per asset, Flow 2 carries instrument attributes, and they merge in p80. Boxes are tables with their key columns; labels on the arrows are the code. The left column holds side inputs that feed a step rather than sit in the chain. Click anything for full logic.</p>
+    <div class="legend" aria-label="Legend">
+      <span><i class="sw" style="border-color:var(--src);background:var(--src-bg)"></i>Source system</span>
+      <span><i class="sw" style="border-color:var(--tall);background:var(--tall-bg)"></i>Tall: one row per identifier</span>
+      <span><i class="sw" style="border-color:var(--key);background:var(--key-bg)"></i>Key map</span>
+      <span><i class="sw" style="border-color:var(--wide);background:var(--wide-bg)"></i>Wide: one row per instrument</span>
+      <span><i class="sw" style="border-color:var(--ext);background:var(--ext-bg);border-style:dashed"></i>Side input / config</span>
+      <span><i class="ln" style="border-color:var(--warn)"></i>Must run first</span>
+    </div>
+  </header>
+
+  <div class="main">
+    <div class="canvas">
+      <p class="hint">Click a box or step to inspect it. Scroll sideways on a narrow screen.</p>
+      <svg id="dg" viewBox="0 0 1060 2000" role="img" aria-label="Lineage diagram from CERD source tables to LRIDBO.RDR_ASSET"></svg>
+    </div>
+    <aside class="insp" id="insp" aria-live="polite"></aside>
+  </div>
+
+  <div class="ref">
+    <section class="card full">
+      <h3>Run order</h3>
+      <p class="lead">The diagram shows where data goes; this shows when each piece runs. The two CERD loaders live in different jobs, so the instrument table loads much later than the alt-ID table.</p>
+      <div class="jobs">
+        <div class="job">
+          <h4>XREF loading job</h4>
+          <p class="who">Launched by AutoSys (e.g. RDRJobRunner)</p>
+          <ol class="run">
+            <li><span><code>STGCRDBO.XREF_LOAD_SQL_INSERT()</code> line 741 calls <code>load_cerd.cerd_exchange_imnt_alt_id(p_context_key)</code></span></li>
+            <li><span><code>ins_cerd_exchange_imnt_alt_id()</code> fills the STGCRDBO staging table</span></li>
+            <li><span><code>dsf_cerd_exchange_imnt_alt_id()</code> versions it into REFDBO (SCD2)</span></li>
+            <li><span>XREF_LOAD runs the XREF_LOAD_SQL steps in run_priority order: 122, 140/150/155, 310 → 510/511 → 610</span></li>
+            <li><span>Result published to REFDBO.GFT_ASSET_XREF</span></li>
+          </ol>
+        </div>
+        <div class="job">
+          <h4>STGCRDBO.LOAD_RDR_ASSET.main()</h4>
+          <p class="who">Runs after the XREF job</p>
+          <ol class="run">
+            <li><span><code>p10_ins_tmp_asst_base</code> pivots GFT_ASSET_XREF into TMP_ASST_BASE</span></li>
+            <li><span><code>p80</code> step A, line 4743, calls <code>load_cerd.cerd_instrument(p_context_key)</code></span></li>
+            <li><span><code>ins_cerd_instrument()</code> stages instruments, <span class="x">reading the alt-ID staging table</span></span></li>
+            <li><span><code>dsf_cerd_instrument()</code> versions into REFDBO.CERD_INSTRUMENT</span></li>
+            <li><span><code>p80</code> step B joins into TMP_ASST_RDR_ASSET (partition CERD)</span></li>
+            <li><span>Other asset-type partitions fill, then <code>p180</code> copies everything to RDR_ASSET</span></li>
+          </ol>
+        </div>
+      </div>
+    </section>
+
+    <section class="card full">
+      <h3>Column trace: where each RDR_ASSET column comes from</h3>
+      <p class="lead">"Shown" means a screenshot states the mapping. "Inferred" means the names line up but no screenshot says so. Worth checking the inferred rows against p80 before relying on them.</p>
+      <div class="tbl"><table>
+        <thead><tr><th>RDR_ASSET column</th><th>Comes from</th><th>Path</th><th>Basis</th></tr></thead>
+        <tbody id="trace"></tbody>
+      </table></div>
+    </section>
+
+    <section class="card">
+      <h3>Join keys at every hop</h3>
+      <div class="tbl"><table>
+        <thead><tr><th>Hop</th><th>Join key</th><th>Type</th></tr></thead>
+        <tbody>
+          <tr><td>Source → ALT_ID / INSTRUMENT</td><td><code>id_imnt</code></td><td>Staging insert, then SCD2</td></tr>
+          <tr><td>ALT_ID staging → INSTRUMENT staging</td><td><code>id_imnt</code> (assumed)</td><td>Load dependency</td></tr>
+          <tr><td>TMP_GFT_ASSET → GFT_KEY_XREF</td><td><code>id_imnt</code></td><td>Key lookup or new key</td></tr>
+          <tr><td>ALT_ID → GFT_ASSET_XREF</td><td><code>id_imnt</code> → <code>lri_asset_key</code></td><td>Type expand + key assignment</td></tr>
+          <tr><td>GFT_ASSET_XREF → TMP_ASST_BASE</td><td><code>lri_asset_key</code></td><td>Pivot, tall → wide</td></tr>
+          <tr><td>TMP_ASST_BASE + INSTRUMENT → TMP_ASST_RDR_ASSET</td><td><code>cc_id_imnt = id_imnt(+)</code></td><td>Outer join, merge point</td></tr>
+          <tr><td>TMP_ASST_RDR_ASSET → RDR_ASSET</td><td><code>context_key</code> partition</td><td>Straight copy</td></tr>
+        </tbody>
+      </table></div>
+    </section>
+
+    <section class="card">
+      <h3>Where the grain changes</h3>
+      <p class="lead">The usual cause of "missing data" when comparing row counts across tables.</p>
+      <ol class="steps">
+        <li><span class="n" style="border-color:var(--tall);color:var(--tall)">1</span><div class="t"><b>CERD_EXCHANGE_IMNT_ALT_ID</b><br>Many rows per <code>id_imnt</code>, one per identifier type.</div></li>
+        <li><span class="n" style="border-color:var(--tall);color:var(--tall)">2</span><div class="t"><b>TMP_GFT_ASSET / GFT_ASSET_XREF</b><br>One row per asset per identifier type. Still tall.</div></li>
+        <li><span class="n" style="border-color:var(--wide);color:var(--wide)">3</span><div class="t"><b>TMP_ASST_BASE → RDR_ASSET</b><br>Exactly one row per <code>lri_asset_key</code>. Pivoted in p10.</div></li>
+      </ol>
+      <div class="qs">
+        <div class="warn"><strong>Sequencing risk.</strong> <code>ins_cerd_instrument</code> reads STGCRDBO.CERD_EXCHANGE_IMNT_ALT_ID (notes.txt line 104). If LOAD_RDR_ASSET runs without a fresh XREF job, instruments are built from stale alt-ID rows.</div>
+        <div class="warn"><strong>GFT_KEY_XREF placement.</strong> One screenshot puts it between TMP_GFT_ASSET and the staging XREF, another after it. Drawn here as a side table: steps 140/150/155 read it on <code>id_imnt</code>, steps 510/511/610 write new keys back.</div>
+        <div class="warn"><strong>SEDOL.</strong> Step 122 decodes S → SEDOL, but no sedol column appears in TMP_ASST_BASE or RDR_ASSET in these screenshots.</div>
+      </div>
+    </section>
+  </div>
+</div>
+
+<script>
+/* ---------- layout model ---------- */
+const COL={K:{x:20,w:230},L:{x:280,w:340},R:{x:720,w:320},LR:{x:280,w:760}};
+const LINE={L:450,R:880,LR:660};
+const N={
+  src:{col:"LR",g:"src",schema:"SOURCE · EXTERNAL, READ-ONLY",name:"CERD_CORPORATE / CERD_CORP_CR",chip:"'C' + 'R' FEEDS",
+    body:["§ALTERNATE IDS → FLOW 1","EXCHANGE_IMNT_ALTERNATE_ID","~one table in each schema","§LOAD RULE","~'C' = CORPORATE, all rows first","~'R' = CORP_CR, only new id_imnt"],
+    body2:["§INSTRUMENT ATTRIBUTES → FLOW 2","INSTRUMENT","IR_INSTRUMENT","IR_INSTRUMENT_FLAG","CODE_VALUES","~each in both schemas"]},
+  stgalt:{col:"L",g:"tall",schema:"STGCRDBO · STAGING",name:"CERD_EXCHANGE_IMNT_ALT_ID",chip:"TALL",
+    body:["~Phase 1 output, before SCD2","§READ BY","dsf_cerd_exchange_imnt_alt_id()","ins_cerd_instrument()  ← Flow 2"]},
+  stginst:{col:"R",g:"wide",assumed:1,schema:"STGCRDBO · STAGING",name:"CERD_INSTRUMENT",chip:"NAME ASSUMED",
+    body:["~Phase 1 output, before SCD2","§INPUTS","source INSTRUMENT, IR_* tables","STG alt-ID table (red line)"]},
+  cfg:{col:"K",g:"ext",schema:"STGCRDBO · CONFIG",name:"XREF_LOAD_SQL",chip:"DRIVER",
+    body:["~Holds the SQL the XREF","~loader runs, in","~run_priority order","§CERD STEP","for_init_load · 122"]},
+  alt:{col:"L",g:"tall",schema:"REFDBO · SCD2",name:"CERD_EXCHANGE_IMNT_ALT_ID",chip:"TALL",
+    body:["§IDENTIFIER COLUMNS","id_imnt","id_typ_alt_imnt · id_imnt_alt","id_view_flag · from_fg ('C'/'R')","lri_eff_asof_dt · lri_eff_until_dt","§GRAIN","id_imnt, id_exch, lri_eff_until_dt","§EXAMPLE TYPES","~ISIN · CUSIP · SEDOL · VALOR · COMMON"]},
+  inst:{col:"R",g:"wide",schema:"REFDBO · SCD2",name:"CERD_INSTRUMENT",chip:"1 ROW / INSTRUMENT",
+    body:["§INSTRUMENT COLUMNS","id_imnt · nm_imnt · id_typ_imnt","cpn_type · rt_cpn","dt_expy_imnt · dt_issue","id_ccy_issue · id_ctry_issuer","id_issuer","is_sinkable · is_convertible","from_fg · SCD2 dates","§GRAIN","id_imnt, lri_eff_until_dt"]},
+  tgft:{col:"L",g:"tall",schema:"STGCRDBO",name:"TMP_GFT_ASSET",chip:"TALL",
+    body:["§PARTITION","EXCHANGE_IMNT_ALTERNATE_ID","§CONVERTED COLUMNS","id_imnt","asset_identifier_type","asset_identifier","status_cd · asset_is_expired"]},
+  gkx:{col:"K",g:"key",schema:"STGCRDBO",name:"GFT_KEY_XREF",chip:"KEY MAP",
+    body:["~Resolves or assigns","~the asset key","§RULE","reuse lri_asset_key","or lri_asset_key_seq","   .NEXTVAL"]},
+  sgax:{col:"L",g:"tall",schema:"STGCRDBO · STAGING",name:"GFT_ASSET_XREF",chip:"TALL",
+    body:["~Temporary XREF data","§ONE ROW =","~one asset + one identifier type","§KEY","lri_asset_key now populated"]},
+  elig:{col:"K",g:"ext",schema:"ENRICHMENT",name:"ECB / RBA lists",chip:"",
+    body:["ecb_eligible_collaterals","rba_elig_securities","§ADDS","is_ecb_eligible","is_rba_eligible"]},
+  rgax:{col:"L",g:"tall",schema:"REFDBO · PUBLISHED",name:"GFT_ASSET_XREF",chip:"TALL",
+    body:["~Final / current XREF reference data","§COLUMNS","lri_asset_key · id_imnt","asset_identifier_type","asset_identifier","source_id = '60CC' for CERD","§GRAIN","lri_asset_key, asset_identifier_type,","lri_eff_until_dt"]},
+  tab:{col:"L",g:"wide",schema:"STGCRDBO",name:"TMP_ASST_BASE",chip:"WIDE",
+    body:["~One wide row per asset","§IDENTIFIER COLUMNS","isin · cusip · common · bbg_id","valoren · bbg_unique_id","cins · ticker","is_ecb_eligible · is_rba_eligible","§KEYS CARRIED FORWARD","lri_asset_key · cc_id_imnt","§GRAIN","lri_asset_key"]},
+  sib:{col:"K",g:"ext",schema:"OTHER PARTITIONS",name:"Sibling loaders",chip:"",
+    body:["BOND","MORTGAGE / MUNI","INDEX / EQUITY","OPTION / FUTURE","GMRD / CS / IL","76_84 / DEFAULT"]},
+  trdr:{col:"LR",g:"wide",schema:"STGCRDBO · PARTITION CERD",name:"TMP_ASST_RDR_ASSET",chip:"COMBINED ROW",
+    body:["§FROM GFT_ASSET_XREF (VIA TMP_ASST_BASE)","lri_asset_key · cc_id_imnt","isin · cusip · common","bbg_id · valoren · cins · ticker","is_ecb_eligible · is_rba_eligible","§NEXT","~All asset-type partitions are","~filled before p180 runs"],
+    body2:["§FROM REFDBO.CERD_INSTRUMENT","name ← nm_imnt","description","jpm_group ← decode(id_typ_imnt)","jpm_security_type","cpn_type · cpn_rate ← rt_cpn *","maturity_dt ← dt_expy_imnt","issue_dt ← dt_issue *","issue_ccy ← id_ccy_issue *","is_sinkable · is_convertible","issuer_spn ← id_issuer","~* mapping inferred from names"]},
+  rdr:{col:"LR",g:"wide",final:1,schema:"LRIDBO · FINAL BUSINESS TABLE",name:"RDR_ASSET",chip:"★ TARGET",
+    body:["§GRAIN","context_key, lri_asset_key","§PARTITION","p_context_key, one per job run","§LOADED BY","~p180 dynamic INSERT, invisible","~to DBA_DEPENDENCIES"],
+    body2:["§ONE WIDE ROW CONTAINS","~Identifier data ← GFT_ASSET_XREF","~Instrument data ← CERD_INSTRUMENT","§TRACE COLUMNS","context_key · lri_asset_key","cc_id_imnt","ref_data_source = '60CC'"]}
+};
+const ROWS=[["src"],["stgalt","stginst"],["cfg","alt","inst"],["tgft"],["gkx","sgax"],["elig","rgax"],["tab"],["sib","trdr"],["rdr"]];
+const PILLS=[
+  {id:"p_ins_alt",gap:0,lane:"L",tag:"XREF JOB · PHASE 1",name:"ins_cerd_exchange_imnt_alt_id()",subs:["staging insert, 'C' then 'R'"]},
+  {id:"p_ins_inst",gap:0,lane:"R",tag:"LOAD_RDR_ASSET · p80 A",name:"ins_cerd_instrument()",subs:["phase 1 · staging insert"]},
+  {id:"p_dsf_alt",gap:1,lane:"L",tag:"PHASE 2",name:"dsf_cerd_exchange_imnt_alt_id()",subs:["SCD2 delta / versioning"]},
+  {id:"p_dsf_inst",gap:1,lane:"R",tag:"PHASE 2",name:"dsf_cerd_instrument()",subs:["SCD2 delta / versioning"]},
+  {id:"p_xref122",gap:2,lane:"L",tag:"XREF_LOAD · STEP 122",name:"for_init_load",subs:["decode P→CUSIP  N→VALOR  I→ISIN","        S→SEDOL  Z→COMMON  C→CERD","id_view_flag = 'Y' · current SCD2 row","length(id) ≤ 25 · dedup by type + id"]},
+  {id:"p_xref140",gap:3,lane:"L",tag:"XREF_LOAD · STEPS 140/150/155",name:"for_expnd_asset_type",subs:["join GFT_KEY_XREF on id_imnt","expand by asset type"]},
+  {id:"p_xref310",gap:4,lane:"L",tag:"XREF_LOAD · STEPS 310 → 510/511 → 610",name:"consolidate + publish",subs:["reuse_lri_asset_key or assign_new_key","new keys written back to GFT_KEY_XREF"]},
+  {id:"p_p10",gap:5,lane:"L",tag:"LOAD_RDR_ASSET · LINE 282",name:"p10_ins_tmp_asst_base",subs:["reads GFT_ASSET_XREF 3 times","pivot: identifier rows → columns","dedup per key · COALESCE(rdt, non_rdt)"]},
+  {id:"p_p80",gap:6,lane:"L",tag:"LOAD_RDR_ASSET · ~LINE 4743",name:"p80_ins_60CC_asset",subs:["merge point: both flows join","b.cc_id_imnt = a.id_imnt(+)"]},
+  {id:"p_p180",gap:7,lane:"LR",tag:"LOAD_RDR_ASSET · LINE 6678",name:"p180_load_to_lridbo",subs:["partition_add_trunc(p_context_key)","EXECUTE IMMEDIATE insert"]}
+];
+
+/* ---------- inspector content ---------- */
+const D={
+  src:{kind:"Source system",g:"src",title:"CERD_CORPORATE / CERD_CORP_CR",sub:"External, read-only to this pipeline.",f:[
+    ["Flow 1 tables",["<code>CERD_CORPORATE.EXCHANGE_IMNT_ALTERNATE_ID</code>","<code>CERD_CORP_CR.EXCHANGE_IMNT_ALTERNATE_ID</code>"]],
+    ["Flow 2 tables",["<code>INSTRUMENT</code>","<code>IR_INSTRUMENT</code>","<code>IR_INSTRUMENT_FLAG</code>","<code>CODE_VALUES</code>","(each in both schemas)"]],
+    ["Two feeds",["<b>'C'</b> = CERD_CORPORATE","<b>'R'</b> = CERD_CORP_CR (reconciliation)"]],
+    ["Load rule","'C' loads first, all rows. 'R' loads only <code>id_imnt</code> not already present (anti-join)."]]},
+  p_ins_alt:{kind:"Phase 1 · LOAD_CERD.cerd_exchange_imnt_alt_id()",g:"proc",title:"ins_cerd_exchange_imnt_alt_id()",sub:"Staging insert from both source feeds.",f:[
+    ["Called by","<code>STGCRDBO.XREF_LOAD_SQL_INSERT()</code> line 741, part of the XREF loading job, launched by AutoSys (e.g. RDRJobRunner)."],
+    ["Call","<pre>stgcrdbo.load_cerd\n  .cerd_exchange_imnt_alt_id(p_context_key)</pre>"],
+    ["Orchestrator","<code>load_cerd.sql</code> lines 38–72"],
+    ["Writes","STGCRDBO.CERD_EXCHANGE_IMNT_ALT_ID"]]},
+  stgalt:{kind:"Table · staging",g:"tall",title:"STGCRDBO.CERD_EXCHANGE_IMNT_ALT_ID",sub:"Staging copy of the alternate IDs. Two different loaders read it.",f:[
+    ["Written by","<code>ins_cerd_exchange_imnt_alt_id()</code> (XREF job)"],
+    ["Read by",["<code>dsf_cerd_exchange_imnt_alt_id()</code>, phase 2","<code>ins_cerd_instrument()</code>, in LOAD_RDR_ASSET"]],
+    ["Watch","<div class='warn'>cerd_instrument() depends on this table (notes.txt line 104). The alt-ID load must run first, or the instrument load reads stale rows.</div>"]]},
+  p_dsf_alt:{kind:"Phase 2 · LOAD_CERD.cerd_exchange_imnt_alt_id()",g:"proc",title:"dsf_cerd_exchange_imnt_alt_id()",sub:"SCD2 delta and versioning into REFDBO.",f:[
+    ["Versioning","Each row versioned by <code>lri_eff_asof_dt</code>, <code>lri_eff_until_dt</code>."]]},
+  alt:{kind:"Table",g:"tall",title:"REFDBO.CERD_EXCHANGE_IMNT_ALT_ID",sub:"Every alternate identifier for each instrument, with history.",f:[
+    ["Grain","<code>(id_imnt, id_exch, lri_eff_until_dt)</code>"],
+    ["Columns",["<code>id_imnt</code>","<code>id_typ_alt_imnt</code>: identifier type code","<code>id_imnt_alt</code>: the identifier value","<code>id_view_flag</code>","<code>from_fg</code> ('C' / 'R')","SCD2 dates"]],
+    ["Examples","ISIN, CUSIP, SEDOL, VALOR, COMMON"],
+    ["Shape","Tall: one row per identifier type per instrument."]]},
+  p_ins_inst:{kind:"Phase 1 · LOAD_CERD.cerd_instrument()",g:"proc",title:"ins_cerd_instrument()",sub:"Staging insert for instrument descriptions.",f:[
+    ["Called by","<code>STGCRDBO.LOAD_RDR_ASSET.main()</code> line 4743, as step A of <code>p80_ins_60CC_asset</code>."],
+    ["Call","<pre>stgcrdbo.load_cerd\n  .cerd_instrument(p_context_key)</pre>"],
+    ["Orchestrator","<code>load_cerd.sql</code> lines 497–530"],
+    ["Reads",["Source INSTRUMENT, IR_INSTRUMENT, IR_INSTRUMENT_FLAG, CODE_VALUES","<b>STGCRDBO.CERD_EXCHANGE_IMNT_ALT_ID</b> (staging, not REFDBO)"]],
+    ["Watch","<div class='warn'>Not independent of the alt-ID load. It must run after <code>cerd_exchange_imnt_alt_id()</code>.</div>"]]},
+  stginst:{kind:"Table · staging",g:"wide",title:"STGCRDBO.CERD_INSTRUMENT",sub:"Phase 1 target. The screenshots say 'staging insert' but never name the table, so this name is a guess.",f:[
+    ["Written by","<code>ins_cerd_instrument()</code>"],["Read by","<code>dsf_cerd_instrument()</code>"]]},
+  p_dsf_inst:{kind:"Phase 2 · LOAD_CERD.cerd_instrument()",g:"proc",title:"dsf_cerd_instrument()",sub:"SCD2 delta and versioning into REFDBO.",f:[
+    ["Versioning","Each row versioned by <code>lri_eff_asof_dt</code>, <code>lri_eff_until_dt</code>."]]},
+  inst:{kind:"Table",g:"wide",title:"REFDBO.CERD_INSTRUMENT",sub:"Descriptive attributes. Goes straight to the p80 join with no further staging.",f:[
+    ["Grain","<code>(id_imnt, lri_eff_until_dt)</code>"],
+    ["Columns",["<code>id_imnt</code>, <code>nm_imnt</code>, <code>id_typ_imnt</code>","<code>cpn_type</code>, <code>rt_cpn</code>","<code>dt_expy_imnt</code>, <code>dt_issue</code>","<code>id_ccy_issue</code>, <code>id_ctry_issuer</code>, <code>id_issuer</code>","<code>is_sinkable</code>, <code>is_convertible</code>","<code>from_fg</code>, SCD2 dates"]],
+    ["When loaded","During LOAD_RDR_ASSET, at p80 step A, immediately before the join."]]},
+  cfg:{kind:"Config table",g:"ext",title:"STGCRDBO.XREF_LOAD_SQL",sub:"Driver table holding the SQL that the XREF_LOAD package executes.",f:[
+    ["How it runs","Dynamic SQL, executed in <code>run_priority</code> order."],
+    ["CERD steps",["122 · for_init_load","140 / 150 / 155 · for_expnd_asset_type","310 · consolidate","510 / 511 · reuse_lri_asset_key","610 · assign_new_key"]],
+    ["Tip","To see the exact SQL for any step, query this table by step name or priority."]]},
+  p_xref122:{kind:"XREF_LOAD step 122",g:"proc",title:"for_init_load",sub:"Turns raw alternate IDs into typed identifiers.",f:[
+    ["Filter","<code>id_typ_alt_imnt IN ('P','N','I','S','Z','C')</code>"],
+    ["Decode","<pre>P → CUSIP    N → VALOR\nI → ISIN     S → SEDOL\nZ → COMMON   C → CERD</pre>"],
+    ["Filters",["<code>id_view_flag = 'Y'</code>","<code>lri_eff_until_dt = 9999</code> (current SCD2 row)","<code>length(id_imnt_alt) &lt;= 25</code>"]],
+    ["Dedup","<code>ROW_NUMBER()</code> partition by <code>(id_typ_alt_imnt, id_imnt_alt)</code>"]]},
+  tgft:{kind:"Table",g:"tall",title:"STGCRDBO.TMP_GFT_ASSET",sub:"Filtered, decoded identifiers in the common XREF shape.",f:[
+    ["Partition","<code>EXCHANGE_IMNT_ALTERNATE_ID</code>"],
+    ["Converted columns",["<code>id_imnt</code>","<code>asset_identifier_type</code> (ISIN, CUSIP, …)","<code>asset_identifier</code> (the value)","<code>status_cd</code>","<code>asset_is_expired</code>"]],
+    ["Shape","Tall: one row per identifier."]]},
+  p_xref140:{kind:"XREF_LOAD steps 140 / 150 / 155",g:"proc",title:"for_expnd_asset_type",sub:"Expands identifiers by asset type and looks up existing keys.",f:[
+    ["Joins","<code>STGCRDBO.GFT_KEY_XREF</code> on <code>id_imnt</code>"]]},
+  gkx:{kind:"Key map",g:"key",title:"STGCRDBO.GFT_KEY_XREF",sub:"Resolves or assigns the asset key, so an instrument keeps the same lri_asset_key across runs.",f:[
+    ["Rule",["Reuse the existing <code>lri_asset_key</code> when <code>id_imnt</code> is already known","Otherwise assign <code>lri_asset_key_seq.NEXTVAL</code>"]],
+    ["Read by","Steps 140/150/155, joined on <code>id_imnt</code>"],
+    ["Written by","Steps 510/511 (reuse) and 610 (assign new key)"],
+    ["Note","<div class='warn'>The screenshots disagree on where this sits in the chain. Drawn as a side table that is both read and written.</div>"]]},
+  sgax:{kind:"Table · staging",g:"tall",title:"STGCRDBO.GFT_ASSET_XREF",sub:"Temporary XREF data before publishing.",f:[
+    ["One row","One asset + one identifier type"],["Shape","Tall."]]},
+  p_xref310:{kind:"XREF_LOAD steps 310 → 510/511 → 610",g:"proc",title:"Consolidate, key, publish",sub:"Gives every asset its surrogate key and publishes the result.",f:[
+    ["Steps",["310 · consolidate","510/511 · reuse_lri_asset_key","610 · assign_new_key"]],
+    ["Key source","<code>lri_asset_key_seq.nextval</code> for assets with no existing key."],
+    ["Output","Consolidated and published to REFDBO.GFT_ASSET_XREF."]]},
+  rgax:{kind:"Table",g:"tall",title:"REFDBO.GFT_ASSET_XREF",sub:"Final, current cross-reference for every source, not only CERD.",f:[
+    ["Columns",["<code>lri_asset_key</code>","<code>id_imnt</code>","<code>asset_identifier_type</code>","<code>asset_identifier</code>","<code>source_id</code>: '60CC' for CERD"]],
+    ["Grain","<code>(lri_asset_key, asset_identifier_type, lri_eff_until_dt)</code>"],
+    ["Shape","Tall: one row per identifier type."]]},
+  elig:{kind:"Side input",g:"ext",title:"ECB / RBA eligibility lists",sub:"Left-joined in p10.",f:[
+    ["Tables",["<code>ecb_eligible_collaterals</code>","<code>rba_elig_securities</code>"]],
+    ["Adds",["<code>is_ecb_eligible</code>","<code>is_rba_eligible</code>"]]]},
+  p_p10:{kind:"Proc · STGCRDBO.LOAD_RDR_ASSET",g:"proc",title:"p10_ins_tmp_asst_base",sub:"load_rdr_asset.sql, line 282. Identifier rows become columns here.",f:[
+    ["Reads GFT_ASSET_XREF 3 times",["<code>W_RdtStId</code>: <code>source_id &lt; '50GM'</code>","<code>W_NonRdtStId</code>: <code>source_id &gt;= '50GM'</code>, includes '60CC'","<code>l_id</code>: street-ID pivot (ILITE, OMNI, OLYMPIC, YMF, HBDW, LUMINA, GAVEA, EMBO, TOPPS, VALOR, HPSPL, CERD, GID)"]],
+    ["Pivot","Tall rows → wide columns (isin, cusip, common, bbg_id, …)"],
+    ["Dedup","<code>ROW_NUMBER()</code> per <code>lri_asset_key</code>"],
+    ["Merge","<code>COALESCE(rdt.*, non_rdt.*)</code>: RDT values win."],
+    ["Enrich","Left join ECB / RBA lists → eligibility flags."]]},
+  tab:{kind:"Table",g:"wide",title:"STGCRDBO.TMP_ASST_BASE",sub:"Identifiers only, one wide row per asset.",f:[
+    ["Grain","<code>(lri_asset_key)</code>"],
+    ["Identifier columns","<code>isin</code>, <code>cusip</code>, <code>common</code>, <code>bbg_id</code>, <code>valoren</code>, <code>bbg_unique_id</code>, <code>cins</code>, <code>ticker</code>"],
+    ["Flags","<code>is_ecb_eligible</code>, <code>is_rba_eligible</code>"],
+    ["Keys carried forward","<code>lri_asset_key</code>, <code>cc_id_imnt</code>"]]},
+  p_p80:{kind:"Proc · STGCRDBO.LOAD_RDR_ASSET",g:"proc",title:"p80_ins_60CC_asset",sub:"load_rdr_asset.sql, about line 4743. Flow 1 meets Flow 2.",f:[
+    ["Step A","Load instruments first: <code>stgcrdbo.load_cerd.cerd_instrument(p_context_key)</code>, which runs <code>ins_</code> then <code>dsf_cerd_instrument()</code>."],
+    ["Inputs",["<b>STGCRDBO.TMP_ASST_BASE</b>: identifier columns and <code>lri_asset_key</code>","<b>REFDBO.CERD_INSTRUMENT</b>: descriptive columns"]],
+    ["Step B","<pre>FROM tmp_asst_base b        -- identifiers\nJOIN refdbo.cerd_instrument a -- descriptions\n  ON b.cc_id_imnt = a.id_imnt(+)</pre>"],
+    ["Watch","The <code>(+)</code> makes this an outer join. An asset missing from CERD_INSTRUMENT still lands, with empty descriptive columns."]]},
+  sib:{kind:"Side input",g:"ext",title:"Sibling partitions",sub:"Other asset-type loaders writing to the same staging table.",f:[
+    ["Partitions","BOND, MORTGAGE/MUNI, INDEX/EQUITY, OPTION/FUTURE, GMRD/CS/IL/76_84/DEFAULT"],
+    ["Timing","All partitions are filled before p180 runs."]]},
+  trdr:{kind:"Table",g:"wide",title:"STGCRDBO.TMP_ASST_RDR_ASSET",sub:"Partition CERD. The combined row, ready for the final copy.",f:[
+    ["From GFT_ASSET_XREF","<code>lri_asset_key</code>, <code>isin</code>, <code>cusip</code>, <code>common</code>, <code>bbg_id</code>, <code>valoren</code>, <code>cins</code>, <code>ticker</code>"],
+    ["From CERD_INSTRUMENT","<code>name</code>, <code>description</code>, <code>jpm_group</code>, <code>jpm_security_type</code>, <code>cpn_type</code>, <code>maturity_dt</code>, <code>issue_dt</code>, <code>issue_ccy</code>, <code>is_sinkable</code>, <code>is_convertible</code>, <code>cpn_rate</code>, issuer information"],
+    ["Grain","One row per <code>lri_asset_key</code>."]]},
+  p_p180:{kind:"Proc · STGCRDBO.LOAD_RDR_ASSET",g:"proc",title:"p180_load_to_lridbo",sub:"load_rdr_asset.sql, line 6678. Runs once all asset-type partitions are prepared.",f:[
+    ["Step 1","<code>LRIDBO.RDR_UTIL.PARTITION_ADD_TRUNC(p_context_key, 'rdr_asset')</code> prepares or truncates the target partition."],
+    ["Step 2","<pre>EXECUTE IMMEDIATE\n  INSERT INTO lridbo.rdr_asset\n    PARTITION FOR (p_context_key)\n  SELECT * FROM tmp_asst_rdr_asset</pre>"],
+    ["Watch","<div class='warn'>Dynamic SQL is invisible to DBA_DEPENDENCIES, so impact-analysis tools will not show this link.</div>"]]},
+  rdr:{kind:"Final table",g:"wide",title:"LRIDBO.RDR_ASSET",sub:"Final business table. One wide row holds identifier and instrument data.",f:[
+    ["Grain","<code>(context_key, lri_asset_key)</code>"],
+    ["Partition","<code>p_context_key</code>, one per job run."],
+    ["Trace columns",["<code>context_key</code>","<code>lri_asset_key</code>","<code>cc_id_imnt</code>","<code>ref_data_source</code>: '60CC' for CERD"]]]}
+};
+
+/* ---------- column trace ---------- */
+const TRACE=[
+  ["lri_asset_key","GFT_KEY_XREF: reused, or lri_asset_key_seq.NEXTVAL","Flow 1","s"],
+  ["cc_id_imnt","CERD id_imnt","Flow 1 → TMP_ASST_BASE","s"],
+  ["isin / cusip / valoren / common","id_imnt_alt where id_typ_alt_imnt = I / P / N / Z","Flow 1, decoded in step 122","s"],
+  ["bbg_id · bbg_unique_id · cins · ticker","Other sources in GFT_ASSET_XREF, via the p10 street-ID pivot","Not in the CERD decode list","i"],
+  ["is_ecb_eligible / is_rba_eligible","ecb_eligible_collaterals / rba_elig_securities","p10 left join","s"],
+  ["name","nm_imnt","Flow 2","s"],
+  ["maturity_dt","dt_expy_imnt","Flow 2","s"],
+  ["issuer_spn","id_issuer","Flow 2","s"],
+  ["jpm_group","decode(id_typ_imnt)","Flow 2","s"],
+  ["cpn_type · is_sinkable · is_convertible","Same-name columns","Flow 2","s"],
+  ["cpn_rate","rt_cpn","Flow 2","i"],
+  ["issue_dt","dt_issue","Flow 2","i"],
+  ["issue_ccy","id_ccy_issue","Flow 2","i"],
+  ["description · jpm_security_type","Not shown in the screenshots","Flow 2","u"],
+  ["ref_data_source","'60CC', the CERD source_id","Constant","s"],
+  ["context_key","p_context_key of the job run","p180 partition","s"]
+];
+const CONF={s:["Shown","c-shown"],i:["Inferred","c-inf"],u:["Unknown","c-unk"]};
+document.getElementById("trace").innerHTML=TRACE.map(([c,f,p,k])=>`<tr><td><code>${c}</code></td><td>${f}</td><td>${p}</td><td><span class="conf ${CONF[k][1]}">${CONF[k][0]}</span></td></tr>`).join("");
+
+/* ---------- render ---------- */
+const NS="http://www.w3.org/2000/svg";
+const svg=document.getElementById("dg");
+function el(tag,attrs,parent,text){const e=document.createElementNS(NS,tag);for(const k in attrs)e.setAttribute(k,attrs[k]);if(text!=null)e.textContent=text;(parent||svg).appendChild(e);return e}
+function bodyH(lines){let h=0;(lines||[]).forEach((l,i)=>{h+=l[0]==="§"?(i?22:14):16});return h}
+function nodeH(n){const b=Math.max(bodyH(n.body),bodyH(n.body2));return b?50+b+14:50}
+function pillH(p){return 4+(p.tag?13:0)+15+14*p.subs.length+9}
+function drawLines(g,lines,x,y0){let yy=y0;(lines||[]).forEach((l,i)=>{
+  if(l[0]==="§"){yy+=i?22:14;el("text",{class:"bh",x,y:yy},g,l.slice(1))}
+  else if(l[0]==="~"){yy+=16;el("text",{class:"bs",x,y:yy},g,l.slice(1))}
+  else{yy+=16;el("text",{class:"bm",x,y:yy},g,l)}})}
+const POS={};
+function render(){
+  while(svg.lastChild)svg.removeChild(svg.lastChild);
+  const defs=el("defs",{});
+  [["ah","arrow"],["ahk","arrow-k"],["ahw","arrow-w"]].forEach(([id,c])=>{const m=el("marker",{id,viewBox:"0 0 10 10",refX:9,refY:5,markerWidth:7,markerHeight:7,orient:"auto-start-reverse"},defs);el("path",{class:c,d:"M0,0 L10,5 L0,10 z"},m)});
+  // row & gap geometry
+  const rowTop=[],rowH=[],gapMid=[];let y=20;
+  ROWS.forEach((r,i)=>{
+    rowTop[i]=y;rowH[i]=Math.max(...r.map(id=>nodeH(N[id])));y+=rowH[i];
+    if(i<ROWS.length-1){const ps=PILLS.filter(p=>p.gap===i);const g=Math.max(78,ps.length?Math.max(...ps.map(pillH))+44:0);gapMid[i]=y+g/2;y+=g}
+  });
+  const H=y+20;svg.setAttribute("viewBox",`0 0 1060 ${H}`);
+  ROWS.forEach((r,i)=>r.forEach(id=>{const c=COL[N[id].col];POS[id]={x:c.x,w:c.w,y:rowTop[i],h:rowH[i],cx:c.x+c.w/2}}));
+  // lane bands + labels
+  const bTop=POS.src.y+POS.src.h+8,bBot=POS.trdr.y-8;
+  el("rect",{class:"band",x:COL.L.x-10,y:bTop,width:COL.L.w+20,height:bBot-bTop,rx:10});
+  el("rect",{class:"band",x:COL.R.x-10,y:bTop,width:COL.R.w+20,height:bBot-bTop,rx:10});
+  el("rect",{class:"band",x:COL.K.x-6,y:POS.cfg.y-30,width:COL.K.w+12,height:POS.sib.y+POS.sib.h-POS.cfg.y+38,rx:10});
+  el("text",{class:"lanelbl",x:COL.L.x,y:bTop+18},null,"FLOW 1");
+  el("text",{class:"lanelbl",x:COL.L.x,y:bTop+31},null,"IDENTIFIERS");
+  el("text",{class:"lanelbl",x:COL.R.x,y:bTop+18},null,"FLOW 2");
+  el("text",{class:"lanelbl",x:COL.R.x,y:bTop+31},null,"INSTRUMENT");
+  el("text",{class:"lanelbl",x:COL.K.x+6,y:POS.cfg.y-12},null,"SIDE INPUTS");
+  const E=(d,cls,m)=>el("path",{class:"edge "+(cls||""),d,"marker-end":`url(#${m||"ah"})`});
+  // lane edges
+  const vL=(a,b,x)=>E(`M${x} ${POS[a].y+POS[a].h} V${POS[b].y-2}`);
+  vL("src","stgalt",LINE.L);vL("stgalt","alt",LINE.L);vL("alt","tgft",LINE.L);vL("tgft","sgax",LINE.L);vL("sgax","rgax",LINE.L);vL("rgax","tab",LINE.L);vL("tab","trdr",LINE.L);
+  vL("src","stginst",LINE.R);vL("stginst","inst",LINE.R);vL("inst","trdr",LINE.R);
+  vL("trdr","rdr",LINE.LR);
+  // Flow 2 waiting note
+  const ny=POS.tgft.y+20;
+  ["Flow 2 waits here.","CERD_INSTRUMENT is loaded","at p80 step A, after the","whole XREF job and p10,","then joins at the merge."].forEach((t,i)=>el("text",{class:"note",x:LINE.R+14,y:ny+i*16},null,t));
+  // dependency
+  const dy=POS.stgalt.y+POS.stgalt.h/2;
+  E(`M${COL.L.x+COL.L.w} ${dy} H${COL.R.x-2}`,"dep","ahw");
+  el("text",{class:"elbl w",x:(COL.L.x+COL.L.w+COL.R.x)/2,y:dy-8,"text-anchor":"middle"},null,"must run first");
+  // side inputs
+  const K=COL.K.x+COL.K.w/2;
+  E(`M${K} ${POS.cfg.y+POS.cfg.h} V${gapMid[2]} H${LINE.L-2}`,"side");
+  el("text",{class:"elbl",x:K+10,y:gapMid[2]-6},null,"drives every XREF_LOAD step");
+  E(`M${K-40} ${POS.gkx.y} V${gapMid[3]} H${LINE.L-2}`,"fb","ahk");
+  el("text",{class:"elbl k",x:K-30,y:gapMid[3]-6},null,"read: join on id_imnt");
+  E(`M${LINE.L} ${gapMid[4]} H${K+40} V${POS.gkx.y+POS.gkx.h+2}`,"fb","ahk");
+  el("text",{class:"elbl k",x:K+50,y:gapMid[4]-6},null,"write: new keys");
+  E(`M${K} ${POS.elig.y+POS.elig.h} V${gapMid[5]} H${LINE.L-2}`,"side");
+  el("text",{class:"elbl",x:K+10,y:gapMid[5]-6},null,"eligibility flags");
+  E(`M${COL.K.x+COL.K.w} ${POS.trdr.y+POS.trdr.h/2} H${COL.LR.x-2}`,"side");
+  // pills
+  PILLS.forEach(p=>{
+    const h=pillH(p),x=LINE[p.lane]+12,top=gapMid[p.gap]-h/2;
+    const g=el("g",{class:"proc","data-id":p.id,tabindex:0,role:"button"});
+    const r=el("rect",{x,y:top,width:10,height:h,rx:6},g);
+    let yy=top+4;
+    if(p.tag){yy+=13;el("text",{class:"pj",x:x+10,y:yy},g,p.tag)}
+    yy+=15;el("text",{class:"pn",x:x+10,y:yy},g,p.name);
+    p.subs.forEach(s=>{yy+=14;el("text",{class:"ps",x:x+10,y:yy,"xml:space":"preserve"},g,s)});
+    r.setAttribute("width",Math.ceil(g.getBBox().width)+20);
+  });
+  // nodes
+  Object.keys(N).forEach(id=>{
+    const n=N[id],p=POS[id];
+    const g=el("g",{class:`node g-${n.g}${n.final?" g-final":""}${n.assumed?" g-assumed":""}`,"data-id":id,tabindex:0,role:"button"});
+    el("rect",{class:"box",x:p.x,y:p.y,width:p.w,height:p.h,rx:8},g);
+    el("text",{class:"schema",x:p.x+14,y:p.y+18},g,n.schema);
+    el("text",{class:"name",x:p.x+14,y:p.y+37},g,n.name);
+    if(n.chip)el("text",{class:"chip",x:p.x+p.w-12,y:p.y+18,"text-anchor":"end"},g,n.chip);
+    if(n.body){el("line",{class:"div",x1:p.x+1,x2:p.x+p.w-1,y1:p.y+48,y2:p.y+48},g);drawLines(g,n.body,p.x+14,p.y+50)}
+    if(n.body2)drawLines(g,n.body2,COL.R.x+14,p.y+50);
+  });
+  svg.querySelectorAll(".node,.proc").forEach(e=>{
+    e.addEventListener("click",()=>show(e.dataset.id));
+    e.addEventListener("keydown",ev=>{if(ev.key==="Enter"||ev.key===" "){ev.preventDefault();show(e.dataset.id)}});
+  });
+  if(cur)mark(cur);
+}
+
+/* ---------- inspector ---------- */
+const pillCls={src:"p-src",tall:"p-tall",key:"p-key",wide:"p-wide",ext:"p-ext",proc:"p-proc"};
+const pillTxt={src:"Source",tall:"Tall grain",key:"Key map",wide:"Wide grain",ext:"Side input",proc:"Process"};
+const insp=document.getElementById("insp");let cur=null;
+function val(v){return Array.isArray(v)?"<ul>"+v.map(x=>"<li>"+x+"</li>").join("")+"</ul>":v}
+function mark(id){svg.querySelectorAll(".node,.proc").forEach(e=>e.classList.toggle("on",e.dataset.id===id))}
+function show(id){
+  const d=D[id];if(!d)return;cur=id;mark(id);
+  insp.innerHTML=`<div class="kind">${d.kind}</div><h2>${d.title}</h2><p class="sub">${d.sub}</p>
+  <p style="margin:0 0 14px"><span class="pill ${pillCls[d.g]}">${pillTxt[d.g]}</span></p>
+  <dl>${d.f.map(([k,v])=>`<div><dt>${k}</dt><dd>${val(v)}</dd></div>`).join("")}</dl>`;
+  try{localStorage.setItem("cerd-sel",id)}catch(e){}
+}
+render();
+let start="p_p80";try{const s=localStorage.getItem("cerd-sel");if(s&&D[s])start=s}catch(e){}
+show(start);
+if(document.fonts&&document.fonts.ready)document.fonts.ready.then(render);
+</script>
+</body>
+</html>

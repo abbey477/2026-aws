@@ -1,0 +1,13 @@
+URL update: OECD Country Risk Classification PDF
+
+The previous OECD link no longer returns the PDF. It now redirects to the general Export Credits page because the OECD restructured its website.
+
+Old URL (no longer works):
+http://www.oecd.org/trade/topics/export-credits/documents/cre-crc-current-english.pdf
+
+New URL:
+https://oecd.org/content/dam/oecd/en/topics/policy-sub-issues/country-risk-classification/cre-crc-current-english.pdf
+
+Action: Replace all references to the old URL with the new one.
+
+Note: The OECD updates this document several times a year. Check the "Valid as of" date on page 1 when using it.

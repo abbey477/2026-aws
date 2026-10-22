@@ -1,0 +1,47 @@
+WHAT YOU ACHIEVED
+
+1. Java 25 and Moneta Boot 4 upgrade
+Started upgrading LRI applications to Java 25 and Moneta Boot 4, building on last year's JDK 17 migration and using Copilot to speed up code changes. The upgraded apps are running with no production impact, which keeps our technology current and reduces security risk.
+
+2. Code quality, security, and stability
+Resolved 30+ Snyk vulnerabilities, raised code coverage to 85%, supported AOComms, and fixed code breaks across LRI apps, using AI to speed up issue analysis. This strengthened security and resiliency.
+
+3. RDR 2.1 pipeline on AWS
+Contributed to the RDR 2.1 pipeline on AWS, building Python Step Function Lambdas, Java Moneta Boot telemetry, and Terraform infrastructure. This delivered a scalable, automated cloud pipeline.
+
+4. AI as a force multiplier
+Used approved AI coding tools like Copilot daily for development, fixes, code analysis, and PL/SQL, cutting my delivery time by [~X%]. I reviewed and tested all AI output to keep quality high.
+
+5. Sybase-to-Oracle replicator for CERD Corporate
+Built a replacement replicator that automates data movement from Sybase to Oracle for CERD Corporate. While the final scope is being verified, I'm adapting the design and running data validation before go-live.
+
+Development opportunities
+- Measure AI impact: Track time saved and defects reduced from AI use, so I can show clear, measurable gains.
+- Finish the upgrade: Complete the remaining Java 25 upgrades on a clear timeline, and use AI to speed up the repetitive steps.
+
+
+HOW YOU ACHIEVED IT
+
+1. Ownership and accountability
+Took ownership of fixing 30+ Snyk vulnerabilities and code breaks across LRI apps without being asked, keeping our applications secure and stable.
+
+2. Adaptability
+While the final CERD Corporate scope is being verified, I'm adapting the replicator design and running data validation, so the project is ready to move forward once the scope is confirmed.
+
+3. High standards of quality and security
+Raised code coverage to 85% and validated each Java 25 upgrade with regression testing, so the upgraded apps have had no production impact.
+
+4. Embracing AI and innovation
+Made Copilot part of my daily workflow to work faster and smarter, while carefully reviewing all output to meet firm standards.
+
+5. Continuous learning and collaboration
+Worked with the RDR 2.1 team across Python, Java, and Terraform on AWS, building new cloud skills to deliver a shared pipeline.
+
+Development opportunities
+- Share knowledge: Run walkthroughs on how I use AI for upgrades and fixes, and document upgrade and replication steps for the team to reuse.
+- Align earlier: Confirm requirements and validation criteria with stakeholders sooner to reduce the impact of scope changes.
+
+
+OPTIONAL DETAILS
+
+The Java 25 and Moneta Boot 4 upgrade is in progress, and CERD Corporate is waiting on final scope confirmation. I plan to complete both in the next cycle while increasing my use of AI tools to improve team efficiency.

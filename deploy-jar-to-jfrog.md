@@ -1,5 +1,59 @@
 # Deploying a Maven JAR to JFrog Artifactory
 
+## 0. Create a basic Maven project (optional)
+
+Check your Java version first:
+
+```bash
+java -version
+mvn -v
+```
+
+> `mvn -v` shows the Java version Maven runs on. The version you set in the pom can't be higher than that.
+
+Generate the project (change `17` to your Java version, such as `11` or `21`):
+
+```bash
+mvn archetype:generate \
+  -DgroupId=com.example \
+  -DartifactId=myapp \
+  -DarchetypeArtifactId=maven-archetype-quickstart \
+  -DarchetypeVersion=1.5 \
+  -DjavaCompilerVersion=17 \
+  -DinteractiveMode=false
+```
+
+> On Windows Command Prompt, put it all on one line or use `^` instead of `\` at the line ends.
+
+Project layout:
+
+```
+myapp/
+├── pom.xml
+└── src/
+    ├── main/java/com/example/App.java
+    └── test/java/com/example/AppTest.java
+```
+
+Check that the generated `pom.xml` contains:
+
+```xml
+<properties>
+  <maven.compiler.release>17</maven.compiler.release>
+</properties>
+```
+
+If it doesn't, add it yourself and remove any `maven.compiler.source` and `maven.compiler.target` lines.
+
+Build the JAR:
+
+```bash
+cd myapp
+mvn clean package
+```
+
+The JAR is created at `target/myapp-1.0-SNAPSHOT.jar`.
+
 ## 1. Configure `pom.xml`
 
 Add this inside `<project>`:

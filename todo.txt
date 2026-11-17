@@ -2,3 +2,10 @@ convert batch id to int data type
 log db for oracle and sybase queries
 hard stop on proc proceessor
 add log start and completed even when no data in the log table.
+
+
+for j in *.jar; do
+  if unzip -p "$j" '*.class' 2>/dev/null | grep -aqE 'getZoneStrings|getAvailableIDs'; then
+    echo "$j"
+  fi
+done

@@ -71,6 +71,49 @@ mvn deploy:deploy-file \
   -Durl=https://YOURCOMPANY.jfrog.io/artifactory/libs-release-local
 ```
 
+## Finding which `settings.xml` you're using
+
+Maven reads two settings files. If a setting is in both, the user file wins.
+
+| Type | Location |
+|---|---|
+| **User** | `~/.m2/settings.xml` (Windows: `C:\Users\YOU\.m2\settings.xml`) |
+| **Global** | `<maven home>/conf/settings.xml` (run `mvn -v` and check the `Maven home:` line) |
+
+### Show the exact paths
+
+Linux / macOS:
+
+```bash
+mvn -X help:help | grep -i settings
+```
+
+Windows:
+
+```bash
+mvn -X help:help | findstr /i settings
+```
+
+Output looks like:
+
+```
+[DEBUG] Reading global settings from /opt/maven/conf/settings.xml
+[DEBUG] Reading user settings from /home/you/.m2/settings.xml
+```
+
+### Check that your credentials are picked up
+
+```bash
+mvn help:effective-settings
+```
+
+This prints the combined settings Maven is actually using. Look for the `<server>` with `id` `artifactory`. The password is masked.
+
+### When the paths change
+
+- If Maven runs with `-s` (user settings) or `-gs` (global settings), it uses the file given there.
+- In IntelliJ or Eclipse, the IDE may use its own settings file. Check the IDE's Maven preferences.
+
 ## Note
 
 Repo names vary by company. Check **Artifacts** in the JFrog UI for the exact names, and replace `libs-release-local` / `libs-snapshot-local` if yours are different.
